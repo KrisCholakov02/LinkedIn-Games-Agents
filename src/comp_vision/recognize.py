@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 
 from src.comp_vision.preprocess import crop_white_border
 
@@ -79,11 +79,12 @@ def detect_grid_size_from_lines(image, debug=True):
 
 def extract_cell_colors(image, num_rows, num_cols):
     """
-    Divides image into cells and extracts average color per cell.
+    Divides image into cells and extracts average center color (3x3 pixels) per cell.
 
     Args:
         image (np.ndarray): Cropped BGR image.
-        grid_size (int): Grid dimension (e.g. 8 for 8x8).
+        num_rows (int): Number of grid rows.
+        num_cols (int): Number of grid columns.
 
     Returns:
         cell_positions (list of (row, col)),
@@ -101,38 +102,53 @@ def extract_cell_colors(image, num_rows, num_cols):
             y1, y2 = row * cell_h, (row + 1) * cell_h
             x1, x2 = col * cell_w, (col + 1) * cell_w
             cell_img = image[y1:y2, x1:x2]
-            avg_color_bgr = cell_img.mean(axis=(0, 1))
-            avg_color_rgb = avg_color_bgr[::-1]  # Convert BGR to RGB
+
+            # Define 3x3 center square
+            cy, cx = cell_img.shape[0] // 2, cell_img.shape[1] // 2
+            center_patch = cell_img[cy - 1:cy + 2, cx - 1:cx + 2]  # 3x3 patch
+
+            avg_color_bgr = center_patch.mean(axis=(0, 1))
+            avg_color_rgb = avg_color_bgr[::-1]  # BGR → RGB
 
             cell_positions.append((row, col))
             cell_colors.append(avg_color_rgb)
 
+
     return cell_positions, np.array(cell_colors)
 
 
-def cluster_cell_colors(cell_colors, n_clusters=None):
+def cluster_cell_colors(cell_colors, eps=10, min_samples=1):
     """
-    Clusters cell colors into groups using KMeans.
-    If n_clusters is None, it tries to guess optimal number using elbow method fallback.
+    Clusters cell colors using DBSCAN (no need to specify n_clusters).
 
     Args:
-        cell_colors (np.ndarray): RGB vectors of all cells.
-        n_clusters (int or None): Number of clusters to form.
+        cell_colors (np.ndarray): RGB vectors (shape: N x 3)
+        eps (float): Maximum distance between two samples to be considered in the same neighborhood.
+        min_samples (int): Minimum number of samples to form a core point.
 
     Returns:
-        labels (np.ndarray): Cluster labels for each cell.
-        centers (np.ndarray): Cluster center RGBs.
+        labels (np.ndarray): Cluster labels per cell.
+        centers (np.ndarray): RGB values for each cluster center.
     """
-    if n_clusters is None:
-        # Estimate number of clusters using simple heuristic
-        # You can implement full elbow method or silhouette later
-        n_clusters = min(10, len(cell_colors) // 2)
+    # Normalize color values to [0, 1] to make eps scale independent
+    normalized = cell_colors / 255.0
 
-    kmeans = KMeans(n_clusters=n_clusters, n_init='auto', random_state=42)
-    labels = kmeans.fit_predict(cell_colors)
-    centers = kmeans.cluster_centers_
+    # Fit DBSCAN
+    db = DBSCAN(eps=eps / 255.0, min_samples=min_samples, metric='euclidean')
+    labels = db.fit_predict(normalized)
 
-    return labels, centers
+    # Compute cluster centers manually
+    unique_labels = sorted(set(labels) - {-1})  # Ignore noise (-1)
+    centers = np.array([
+        cell_colors[labels == label].mean(axis=0)
+        for label in unique_labels
+    ])
+
+    # Re-map labels to 0-based cluster IDs
+    label_map = {old: new for new, old in enumerate(unique_labels)}
+    clean_labels = np.array([label_map[label] if label in label_map else -1 for label in labels])
+
+    return clean_labels, centers
 
 
 def recognize_maze(image, n_clusters=None):
@@ -153,9 +169,11 @@ def recognize_maze(image, n_clusters=None):
     print(f"Detected grid size: {rows} rows × {cols} cols")
 
     positions, colors = extract_cell_colors(cropped, rows, cols)
-    labels, centers = cluster_cell_colors(colors, n_clusters)
+    labels, centers = cluster_cell_colors(colors)  # don't pass n_clusters anymore
 
     maze_map = {positions[i]: int(labels[i]) for i in range(len(positions))}
     cluster_colors = {i: tuple(map(int, centers[i])) for i in range(len(centers))}
+
+    print(f"Detected color clusters: {len(centers)}")
 
     return maze_map, cluster_colors
