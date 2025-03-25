@@ -1,12 +1,11 @@
-from test_preprocessing import test_preprocessing
 from src.comp_vision.recognize import recognize_maze
-
+from test_screenshot import test_take_screenshot
 
 def test_dynamic_recognition():
-    agent, cropped_img = test_preprocessing()
+    agent, board_img = test_take_screenshot()
 
     # Recognize the puzzle
-    maze_map, cluster_colors = recognize_maze(cropped_img)
+    maze_map, cluster_colors = recognize_maze(board_img)
 
     for pos, label in maze_map.items():
         print(f"{pos}: Cluster {label}, Color {cluster_colors[label]}")

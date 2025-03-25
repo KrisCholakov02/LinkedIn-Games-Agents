@@ -10,8 +10,8 @@ def test_take_screenshot():
     """
     Runs the navigation flow and takes a screenshot of the puzzle page.
     """
-    agent = run_navigation_flow()
-    sleep(5)  # Allow puzzle to load
+    agent, already_solved = run_navigation_flow()
+    sleep(2)  # Allow puzzle to load
 
     take_screenshot(agent.driver, "img/screenshot_test.png")
     print("Screenshot complete.")

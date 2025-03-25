@@ -1,23 +1,32 @@
 import cv2
 import numpy as np
+from selenium.webdriver.common.by import By
+import time
 
 
 def take_screenshot(driver, output_path: str) -> None:
     """
-    Takes a screenshot of the current browser window using the provided WebDriver
-    and saves it to the specified path.
+    Captures and saves a screenshot of only the puzzle board by rendering
+    the DOM element directly (no pixel math needed).
 
     Args:
         driver (selenium.webdriver): The active Selenium WebDriver instance.
-        output_path (str): The file path to save the screenshot (e.g., "img/screenshot_test.png").
+        output_path (str): The file path to save the screenshot (e.g., "img/board.png").
     """
-    # Capture screenshot as PNG binary
-    screenshot_png = driver.get_screenshot_as_png()
+    time.sleep(1)
 
-    # Decode into OpenCV image format
-    np_img = np.frombuffer(screenshot_png, np.uint8)
-    screenshot_img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+    board_element = driver.find_element(By.CLASS_NAME, "queens-board")
 
-    # Save image to disk
-    cv2.imwrite(output_path, screenshot_img)
-    print(f"Screenshot saved to: {output_path}")
+    # Scroll into view just to be safe (optional)
+    driver.execute_script("arguments[0].scrollIntoView(true);", board_element)
+    time.sleep(0.2)
+
+    # Use Selenium's built-in per-element screenshot
+    png_data = board_element.screenshot_as_png
+
+    # Decode and save using OpenCV
+    np_img = np.frombuffer(png_data, np.uint8)
+    board_img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+
+    cv2.imwrite(output_path, board_img)
+    print(f"Board screenshot saved to: {output_path}")

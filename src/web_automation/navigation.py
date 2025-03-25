@@ -8,7 +8,7 @@ from src.web_automation.linkedin_game_agent import LinkedInGameAgent
 def navigate_to_queens_puzzle(driver_path: str, username: str, password: str, headless: bool = False) -> LinkedInGameAgent:
     """
     Launches a LinkedInGameAgent instance, logs into LinkedIn, navigates to the Queens puzzle,
-    and clicks the 'Solve puzzle' or 'Resume game' button.
+    and clicks the 'Solve puzzle' or 'Resume game' button if present.
 
     Args:
         driver_path (str): Path to the Chrome WebDriver executable.
@@ -24,6 +24,8 @@ def navigate_to_queens_puzzle(driver_path: str, username: str, password: str, he
     print("Navigation successful. LinkedIn feed page should now be visible.")
 
     wait = WebDriverWait(agent.driver, 20)
+
+    already_solved = False
 
     try:
         # Login
@@ -54,29 +56,40 @@ def navigate_to_queens_puzzle(driver_path: str, username: str, password: str, he
     sleep(5)  # Wait for puzzle screen to load
 
     try:
-        solve_button = None
+        action_button = None
+        fallback_button = None
         buttons = agent.driver.find_elements(By.TAG_NAME, "button")
-        print(f"Found {len(buttons)} buttons. Searching for 'Solve puzzle' or 'Resume game'...")
+        print(f"Found {len(buttons)} buttons. Searching for game state buttons...")
+
         for btn in buttons:
             try:
                 span = btn.find_element(By.TAG_NAME, "span")
                 text = span.text.strip()
+
                 if "Solve puzzle" in text or "Resume game" in text:
-                    solve_button = btn
-                    print("Found game action button with text:", text)
+                    action_button = btn
+                    print("Found actionable game button:", text)
                     break
+                elif "See results" in text:
+                    fallback_button = btn  # store fallback if no action needed
             except Exception:
                 continue
 
-        if solve_button:
-            agent.driver.execute_script("arguments[0].scrollIntoView(true);", solve_button)
+        if action_button:
+            agent.driver.execute_script("arguments[0].scrollIntoView(true);", action_button)
             sleep(1)
-            agent.driver.execute_script("arguments[0].click();", solve_button)
-            print("Clicked on the 'Solve puzzle' or 'Resume game' button.")
+            agent.driver.execute_script("arguments[0].click();", action_button)
+            print("Clicked the 'Solve puzzle' or 'Resume game' button.")
+
+        elif fallback_button:
+            print("Puzzle already solved. 'See results' button is present. No need to run recognition.")
+            already_solved = True
+            return agent, already_solved
+
         else:
-            print("Could not find the puzzle action button.")
+            print("No actionable puzzle button found (no Solve, Resume, or See results).")
 
     except Exception as e:
-        print("An error occurred while handling puzzle action button:", e)
+        print("An error occurred while handling puzzle action buttons:", e)
 
-    return agent
+    return agent, already_solved

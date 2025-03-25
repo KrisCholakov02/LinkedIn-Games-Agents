@@ -2,9 +2,6 @@ import numpy as np
 import cv2
 from sklearn.cluster import KMeans, DBSCAN
 
-from src.comp_vision.preprocess import crop_white_border
-
-
 def detect_grid_size_from_lines(image, debug=True):
     """
     Detects number of rows and columns using thick black lines in a grid.
@@ -163,12 +160,11 @@ def recognize_maze(image, n_clusters=None):
         dict: (row, col) → cluster label
         dict: cluster label → RGB color
     """
-    cropped = crop_white_border(image, debug=True)
 
-    rows, cols = detect_grid_size_from_lines(cropped, debug=True)
+    rows, cols = detect_grid_size_from_lines(image, debug=True)
     print(f"Detected grid size: {rows} rows × {cols} cols")
 
-    positions, colors = extract_cell_colors(cropped, rows, cols)
+    positions, colors = extract_cell_colors(image, rows, cols)
     labels, centers = cluster_cell_colors(colors)  # don't pass n_clusters anymore
 
     maze_map = {positions[i]: int(labels[i]) for i in range(len(positions))}
