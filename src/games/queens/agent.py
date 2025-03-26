@@ -22,27 +22,9 @@ class LinkedInQueensAgent(BaseGameAgent):
         sleep(2)
         return self._handle_game_state()
 
-    def _handle_game_state(self):
-        buttons = self.driver.find_elements(By.TAG_NAME, "button")
-        for btn in buttons:
-            try:
-                span = btn.find_element(By.TAG_NAME, "span")
-                text = span.text.strip()
-                if "Solve puzzle" in text or "Resume game" in text:
-                    btn.click()
-                    print(f"[✓] Clicked '{text}' to start game.")
-                    return True
-                elif "See results" in text:
-                    print("[✓] Puzzle already solved.")
-                    return False
-            except:
-                continue
-        print("[!] No valid game action found.")
-        return False
-
     def capture_board(self):
         output_path = "img/screenshot_test.png"
-        take_screenshot(self.driver, output_path)
+        take_screenshot(self.driver, output_path, board_class="queens-board")
         image = cv2.imread(output_path)
         if image is None:
             raise RuntimeError(f"Failed to load image from {output_path}")

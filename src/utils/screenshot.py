@@ -1,3 +1,4 @@
+import math
 import os
 import cv2
 import numpy as np
@@ -5,7 +6,7 @@ import time
 from selenium.webdriver.common.by import By
 
 
-def take_screenshot(driver, output_path: str) -> None:
+def take_screenshot(driver, output_path: str, board_class) -> None:
     """
     Captures and saves a screenshot of only the puzzle board using DOM-based coordinates.
 
@@ -14,7 +15,7 @@ def take_screenshot(driver, output_path: str) -> None:
     time.sleep(1)
 
     # Scroll the element into view
-    board_element = driver.find_element(By.CLASS_NAME, "queens-board")
+    board_element = driver.find_element(By.CLASS_NAME, board_class)
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", board_element)
     time.sleep(1)  # allow scroll to settle
 
@@ -35,7 +36,7 @@ def take_screenshot(driver, output_path: str) -> None:
     full_img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
 
     # Convert and round coordinates to int
-    x, y, w, h = map(int, (rect['x'], rect['y'], rect['width'], rect['height']))
+    x, y, w, h = map(math.ceil, (rect['x'], rect['y'], rect['width'], rect['height']))
 
     # Crop using accurate viewport coords
     cropped = full_img[y:y + h, x:x + w]

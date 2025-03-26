@@ -62,3 +62,21 @@ class BaseGameAgent:
         if self.driver:
             self.driver.quit()
             print("[✓] Browser closed.")
+
+    def _handle_game_state(self):
+        buttons = self.driver.find_elements(By.TAG_NAME, "button")
+        for btn in buttons:
+            try:
+                span = btn.find_element(By.TAG_NAME, "span")
+                text = span.text.strip()
+                if "Solve puzzle" in text or "Resume game" in text:
+                    btn.click()
+                    print(f"[✓] Clicked '{text}' to start game.")
+                    return True
+                elif "See results" in text:
+                    print("[✓] Puzzle already solved.")
+                    return False
+            except:
+                continue
+        print("[!] No valid game action found.")
+        return False
