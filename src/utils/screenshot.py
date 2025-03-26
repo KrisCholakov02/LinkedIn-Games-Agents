@@ -1,32 +1,48 @@
+import os
 import cv2
 import numpy as np
-from selenium.webdriver.common.by import By
 import time
+from selenium.webdriver.common.by import By
 
 
 def take_screenshot(driver, output_path: str) -> None:
     """
-    Captures and saves a screenshot of only the puzzle board by rendering
-    the DOM element directly (no pixel math needed).
+    Captures and saves a screenshot of only the puzzle board using DOM-based coordinates.
 
-    Args:
-        driver (selenium.webdriver): The active Selenium WebDriver instance.
-        output_path (str): The file path to save the screenshot (e.g., "img/board.png").
+    Uses `getBoundingClientRect()` to ensure accurate cropping relative to the viewport.
     """
     time.sleep(1)
 
+    # Scroll the element into view
     board_element = driver.find_element(By.CLASS_NAME, "queens-board")
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", board_element)
+    time.sleep(1)  # allow scroll to settle
 
-    # Scroll into view just to be safe (optional)
-    driver.execute_script("arguments[0].scrollIntoView(true);", board_element)
-    time.sleep(0.2)
+    # Use getBoundingClientRect to get viewport-relative coordinates
+    rect = driver.execute_script("""
+        const rect = arguments[0].getBoundingClientRect();
+        return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height
+        };
+    """, board_element)
 
-    # Use Selenium's built-in per-element screenshot
-    png_data = board_element.screenshot_as_png
+    # Capture full viewport screenshot
+    screenshot_png = driver.get_screenshot_as_png()
+    np_img = np.frombuffer(screenshot_png, np.uint8)
+    full_img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
 
-    # Decode and save using OpenCV
-    np_img = np.frombuffer(png_data, np.uint8)
-    board_img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+    # Convert and round coordinates to int
+    x, y, w, h = map(int, (rect['x'], rect['y'], rect['width'], rect['height']))
 
-    cv2.imwrite(output_path, board_img)
-    print(f"Board screenshot saved to: {output_path}")
+    # Crop using accurate viewport coords
+    cropped = full_img[y:y + h, x:x + w]
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    success = cv2.imwrite(output_path, cropped)
+    if success:
+        print(f"[✓] Cropped puzzle screenshot saved to: {output_path}")
+    else:
+        print(f"[✗] Failed to save screenshot to: {output_path}")

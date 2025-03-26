@@ -4,7 +4,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from time import sleep
 
 
 class BaseGameAgent:
@@ -41,7 +40,6 @@ class BaseGameAgent:
             sign_in_button.click()
 
             print("[✓] Login submitted.")
-            sleep(5)
         except Exception as e:
             print("[✗] Login failed:", e)
 

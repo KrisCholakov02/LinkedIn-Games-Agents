@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.cluster import DBSCAN
 
 def detect_grid_size_from_lines(image, debug=True):
     """
@@ -69,8 +69,6 @@ def detect_grid_size_from_lines(image, debug=True):
 
     if num_rows < 1 or num_cols < 1:
         raise ValueError("Could not detect valid grid lines.")
-
-    return num_rows, num_cols
 
     return num_rows, num_cols
 
