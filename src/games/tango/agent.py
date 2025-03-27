@@ -1,6 +1,7 @@
 from time import sleep
 from src.core.base_game_agent import BaseGameAgent
-from selenium.webdriver.common.by import By
+from src.games.tango.solver import solve_tango_puzzle
+from src.games.tango.placer import place_solution as place_tango_solution
 
 from src.games.tango.recognizer import recognize_tango_board
 from src.utils.screenshot import take_screenshot
@@ -42,10 +43,69 @@ class LinkedInTangoAgent(BaseGameAgent):
         # Return the cell map and the sign map instead of an edge map
         return cell_map, sign_map
 
-    def solve(self, maze_map):
-        # To be implemented: placeholder
-        raise NotImplementedError("Solver for Tango is not implemented yet.")
+    def solve(self, recognized_data):
+        """
+        Solve the Tango puzzle using the external solver from solver.py
+        recognized_data => (cell_map, sign_map)
+        """
+        cell_map, sign_map = recognized_data
+        rows = self.num_rows
+        cols = self.num_cols
+
+        # Build equals_constraints & cross_constraints from sign_map
+        equals_constraints = []
+        cross_constraints = []
+        # sign_map items might store pairs of adjacent cells that sign covers
+        # e.g. sign_item['cell_pairs'] = [((r1, c1), (r2, c2))]
+        # sign_item['sign_label'] => 'equals' or 'cross'
+        for item in sign_map:
+            label = item['sign_label']
+            if 'cell_pairs' in item:  # or however you store it
+                for pair in item['cell_pairs']:
+                    if label == 'equals':
+                        equals_constraints.append(pair)
+                    elif label == 'cross':
+                        cross_constraints.append(pair)
+
+        # Each row/column must have the same # of icon1 & icon2 => half icon1, half icon2
+        # For an NxN puzzle with N even => row_quota[r] = N//2
+        row_quota = [cols // 2] * rows
+        col_quota = [rows // 2] * cols
+
+        # Call the puzzle solver
+        solution = solve_tango_puzzle(rows, cols,
+                                      equals_constraints,
+                                      cross_constraints,
+                                      row_quota,
+                                      col_quota)
+
+        if not solution:
+            print("[!] No solution found, which should be unlikely for a valid puzzle.")
+        else:
+            print("[✓] Puzzle solved!")
+            for row_sol in solution:
+                print(row_sol)
+        return solution
+
 
     def place_solution(self, solution):
-        # To be implemented: placeholder
-        raise NotImplementedError("Placer for Tango is not implemented yet.")
+        """
+        Places the puzzle solution on the board by clicking each cell
+        until it shows the correct icon.
+        """
+        if not solution:
+            print("[!] No solution to place.")
+            return
+
+        print("[i] Placing the puzzle solution on the board...")
+        try:
+            place_tango_solution(
+                driver=self.driver,
+                solution_grid=solution,
+                skip_locked=True,
+                debug=True   # set to False for less logging
+            )
+            print("[✓] Placed the puzzle solution successfully.")
+            sleep(1000)
+        except RuntimeError as e:
+            print(f"[✗] Placing solution failed: {e}")
