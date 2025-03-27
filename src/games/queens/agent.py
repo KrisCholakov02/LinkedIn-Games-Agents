@@ -19,7 +19,7 @@ class LinkedInQueensAgent(BaseGameAgent):
     def navigate_and_prepare(self, username: str, password: str) -> bool:
         self.login(username, password)
         self.navigate_to_game("Queens")
-        sleep(2)
+        sleep(1)
         return self._handle_game_state()
 
     def capture_board(self):
