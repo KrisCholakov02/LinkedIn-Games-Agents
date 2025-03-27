@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import cv2
-from sklearn.cluster import DBSCAN, KMeans
+from sklearn.cluster import KMeans
 
 
 def detect_grid_size_from_faded_lines(image, debug=True):
@@ -73,141 +73,119 @@ def detect_grid_size_from_faded_lines(image, debug=True):
     return horizontal_lines_pos, vertical_lines_pos
 
 
-def crop_cells_and_edges(image, h_lines, v_lines):
+def crop_cell_inners(image, h_lines, v_lines, margin=10):
     """
-    Crops each cell and edge area (right/bottom) from the grid image.
+    Crops inner content of each cell by applying margin on all sides.
 
     Args:
         image (np.ndarray): Input BGR image.
         h_lines (list): Horizontal line positions.
         v_lines (list): Vertical line positions.
+        margin (int): Padding from all sides (default 10 pixels).
 
     Returns:
-        tuple: (list of cell_images, list of right_edge_images, list of bottom_edge_images)
+        list: List of (position, cell_image) tuples.
     """
     cell_images = []
-    edge_images_right = []
-    edge_images_bottom = []
-
     os.makedirs("img/debug/cells", exist_ok=True)
-    os.makedirs("img/debug/edges/right", exist_ok=True)
-    os.makedirs("img/debug/edges/bottom", exist_ok=True)
 
     for i in range(len(h_lines) - 1):
         for j in range(len(v_lines) - 1):
             y1, y2 = h_lines[i], h_lines[i + 1]
             x1, x2 = v_lines[j], v_lines[j + 1]
 
-            # Crop 10 pixels inside each side of the cell
-            margin = 10
             y1_inner = min(y1 + margin, y2)
             y2_inner = max(y2 - margin, y1_inner + 1)
             x1_inner = min(x1 + margin, x2)
             x2_inner = max(x2 - margin, x1_inner + 1)
 
-            # Cell content
             cell_img = image[y1_inner:y2_inner, x1_inner:x2_inner]
             cell_images.append(((i, j), cell_img))
             cv2.imwrite(f"img/debug/cells/cell_{i}_{j}.png", cell_img)
 
-            # Right edge
-            if j < len(v_lines) - 2:
-                edge_r = image[y1:y2, x2:x2 + 6]
-                edge_images_right.append(((i, j), edge_r))
-                cv2.imwrite(f"img/debug/edges/right/edge_{i}_{j}.png", edge_r)
-
-            # Bottom edge
-            if i < len(h_lines) - 2:
-                edge_b = image[y2:y2 + 6, x1:x2]
-                edge_images_bottom.append(((i, j), edge_b))
-                cv2.imwrite(f"img/debug/edges/bottom/edge_{i}_{j}.png", edge_b)
-
-    return cell_images, edge_images_right, edge_images_bottom
+    return cell_images
 
 
-def classify_images(image_tuples, n_clusters=3):
+def determine_optimal_k(features, max_k=3):
     """
-    Clusters images based on their normalized grayscale appearance using KMeans.
+    Automatically choose optimal number of clusters using simplified elbow method.
 
     Args:
-        image_tuples (list of tuple): (metadata, image) tuples.
-        n_clusters (int): Fixed number of visual clusters (e.g., Sun, Moon, Empty).
+        features (np.ndarray): Flattened grayscale features.
+        max_k (int): Maximum clusters to test.
 
     Returns:
-        list: Cluster labels for each image.
+        int: Optimal number of clusters.
+    """
+    inertias = []
+    for k in range(1, max_k + 1):
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        kmeans.fit(features)
+        inertias.append(kmeans.inertia_)
+
+    deltas = [inertias[i - 1] - inertias[i] for i in range(1, len(inertias))]
+    if len(deltas) == 0:
+        return 1
+    if len(deltas) == 1 or deltas[1] < 0.1 * deltas[0]:
+        return 2
+    return 3
+
+
+def classify_cells(cell_images, max_clusters=3):
+    """
+    Clusters the cells into 1–3 groups (e.g., empty, moon, sun).
+
+    Args:
+        cell_images (list): List of (pos, img) tuples.
+
+    Returns:
+        list: Cluster labels per cell.
     """
     features = []
-    for (_, img) in image_tuples:
+    for (_, img) in cell_images:
         resized = cv2.resize(img, (24, 24))
         gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-
-        # Preprocessing: histogram equalization + blur
         gray = cv2.equalizeHist(gray)
         blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-
         norm = blurred / 255.0
         features.append(norm.flatten())
 
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(features)
+    features_np = np.array(features)
+    k = determine_optimal_k(features_np, max_k=max_clusters)
+
+    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(features_np)
     return labels
 
 
 def recognize_tango_board(image, debug=True):
     """
-    Recognizes a Tango puzzle board:
-    - Detects grid structure from faded lines.
-    - Crops cell interiors and border regions.
-    - Clusters visual elements to classify them.
+    Recognizes only the inner cells (Sun, Moon, Empty) of a Tango board.
 
     Args:
-        image (np.ndarray): Input BGR puzzle screenshot.
-        debug (bool): Whether to save debug crops/images.
+        image (np.ndarray): BGR screenshot of the puzzle.
+        debug (bool): Whether to save debug output.
 
     Returns:
         tuple:
-            - cell_map: {(row, col) → cluster_id}
-            - edge_map: {((r1, c1), (r2, c2)) → cluster_id}
+            - cell_map: {(row, col): cluster_id}
             - rows: int
             - cols: int
     """
     h_lines, v_lines = detect_grid_size_from_faded_lines(image, debug=debug)
-    cell_imgs, edge_imgs_r, edge_imgs_b = crop_cells_and_edges(image, h_lines, v_lines)
-
     rows = len(h_lines) - 1
     cols = len(v_lines) - 1
 
-    cell_labels = classify_images(cell_imgs)
-    edge_labels_r = classify_images(edge_imgs_r)
-    edge_labels_b = classify_images(edge_imgs_b)
+    cell_images = crop_cell_inners(image, h_lines, v_lines, margin=10)
+    cell_labels = classify_cells(cell_images)
 
-    # Construct final maps
-    cell_map = {pos: label for (pos, _), label in zip(cell_imgs, cell_labels)}
+    cell_map = {pos: label for (pos, _), label in zip(cell_images, cell_labels)}
 
-    edge_map = {}
-    for ((r, c), _), label in zip(edge_imgs_r, edge_labels_r):
-        edge_map[((r, c), (r, c + 1))] = label
-    for ((r, c), _), label in zip(edge_imgs_b, edge_labels_b):
-        edge_map[((r, c), (r + 1, c))] = label
-
-    # --- Save clustered images into directories ---
     if debug:
-        for (pos, img), label in zip(cell_imgs, cell_labels):
+        for (pos, img), label in zip(cell_images, cell_labels):
             cluster_dir = f"img/debug/cells/cluster_{label}"
             os.makedirs(cluster_dir, exist_ok=True)
             r, c = pos
             cv2.imwrite(f"{cluster_dir}/cell_{r}_{c}.png", img)
 
-        for (pos, img), label in zip(edge_imgs_r, edge_labels_r):
-            cluster_dir = f"img/debug/edges/right/cluster_{label}"
-            os.makedirs(cluster_dir, exist_ok=True)
-            r, c = pos
-            cv2.imwrite(f"{cluster_dir}/edge_r_{r}_{c}.png", img)
-
-        for (pos, img), label in zip(edge_imgs_b, edge_labels_b):
-            cluster_dir = f"img/debug/edges/bottom/cluster_{label}"
-            os.makedirs(cluster_dir, exist_ok=True)
-            r, c = pos
-            cv2.imwrite(f"{cluster_dir}/edge_b_{r}_{c}.png", img)
-
-    return cell_map, edge_map, rows, cols
+    return cell_map, rows, cols
