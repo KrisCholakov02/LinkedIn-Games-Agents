@@ -185,6 +185,28 @@ def non_max_suppression(boxes, overlap_thresh=0.3):
 
 
 def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7, debug=True):
+    """
+    Uses multi-scale template matching to find each sign in the board image, then
+    determines which two adjacent cells it sits between. Stores that in
+    sign_info['cell_pairs'] = [((r1,c1), (r2,c2))]
+    rather than just a single grid_position.
+
+    Args:
+        image (np.ndarray): BGR board image.
+        sign_templates (dict): { 'sign_label': cv2_image_of_sign, ... }
+        h_lines (list): Sorted y-coordinates of horizontal grid lines.
+        v_lines (list): Sorted x-coordinates of vertical grid lines.
+        threshold (float): Match threshold for cv2.matchTemplate.
+        debug (bool): If True, saves debug images with bounding boxes.
+
+    Returns:
+        sign_map: A list of dictionaries, each containing:
+          {
+            'sign_label': str,
+            'bounding_box': (x1, y1, x2, y2),
+            'cell_pairs': [((r1,c1),(r2,c2))]  # exactly 2 cells
+          }
+    """
     if not sign_templates:
         return []
 
@@ -192,21 +214,31 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
     debug_img = image.copy() if debug else None
     sign_results = []
 
-    def find_line_index(val, lines):
-        for i in range(len(lines) - 1):
-            if lines[i] <= val < lines[i + 1]:
-                return i
-        return None
+    # Helper to clamp valid cell indices
+    def clamp_idx(val, upper):
+        return max(0, min(val, upper - 1))
 
-    for label, tmpl in sign_templates.items():
-        if tmpl is None or tmpl.size == 0:
+    # Finds the index in lines[] whose coordinate is nearest to 'val'.
+    # Returns (index, distance)
+    def find_nearest_line(val, lines):
+        nearest_idx = None
+        nearest_dist = float('inf')
+        for i, line_coord in enumerate(lines):
+            dist = abs(line_coord - val)
+            if dist < nearest_dist:
+                nearest_idx = i
+                nearest_dist = dist
+        return nearest_idx, nearest_dist
+
+    for label, tmpl_bgr in sign_templates.items():
+        if tmpl_bgr is None or tmpl_bgr.size == 0:
             print(f"[!] Warning: Template for '{label}' is empty. Skipping.")
             continue
 
-        tmpl_gray = cv2.cvtColor(tmpl, cv2.COLOR_BGR2GRAY)
-        raw_boxes = multi_scale_template_match(
-            board_gray, tmpl_gray, threshold=threshold, scale_factors=None
-        )
+        tmpl_gray = cv2.cvtColor(tmpl_bgr, cv2.COLOR_BGR2GRAY)
+        raw_boxes = multi_scale_template_match(board_gray, tmpl_gray,
+                                               threshold=threshold,
+                                               scale_factors=None)
 
         final_boxes = non_max_suppression(raw_boxes, overlap_thresh=0.3)
 
@@ -214,18 +246,70 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
             cx = (x1 + x2) // 2
             cy = (y1 + y2) // 2
 
-            row_idx = find_line_index(cy, h_lines)
-            col_idx = find_line_index(cx, v_lines)
+            # Decide if it's near a vertical or horizontal line
+            # We do a simple check: whichever distance is smaller -> we treat sign as on that line
+            # You can tweak the distance threshold as needed.
+            near_v_idx, dist_v = find_nearest_line(cx, v_lines)
+            near_h_idx, dist_h = find_nearest_line(cy, h_lines)
 
-            if row_idx is None or col_idx is None:
-                grid_pos = (None, None)
-            else:
-                grid_pos = (row_idx, col_idx)
+            # Suppose we define a threshold of ±6 px to consider "near" a line
+            # If it is nearer to vertical than horizontal, treat it as vertical
+            # else horizontal. If neither is < 6, we skip or treat as single cell?
+
+            # We only handle "one dimension" boundary.
+            # If puzzle can have diagonal or corner signs, adapt further.
+            cell_pairs = []
+            line_thresh = 6
+
+            if dist_v < dist_h and dist_v < line_thresh:
+                # The sign is near a vertical boundary line => between two adjacent columns in the same row
+                # near_v_idx is an index in v_lines
+                # That line is between col = near_v_idx-1 and near_v_idx
+                c_left = clamp_idx(near_v_idx - 1, len(v_lines) - 1)
+                c_right = clamp_idx(near_v_idx, len(v_lines) - 1)
+
+                # For row, we find which horizontal band 'cy' belongs in
+                # row_idx s.t. h_lines[row_idx] <= cy < h_lines[row_idx+1]
+                # We'll do a simple linear search:
+                row_idx = None
+                for i in range(len(h_lines) - 1):
+                    if h_lines[i] <= cy < h_lines[i + 1]:
+                        row_idx = i
+                        break
+
+                if row_idx is not None:
+                    cell_pairs.append(((row_idx, c_left), (row_idx, c_right)))
+                else:
+                    # fallback: single cell or skip
+                    pass
+
+            elif dist_h <= dist_v and dist_h < line_thresh:
+                # The sign is near a horizontal boundary line => between two adjacent rows in the same column
+                r_top = clamp_idx(near_h_idx - 1, len(h_lines) - 1)
+                r_bot = clamp_idx(near_h_idx, len(h_lines) - 1)
+
+                # For column, find where 'cx' belongs
+                col_idx = None
+                for j in range(len(v_lines) - 1):
+                    if v_lines[j] <= cx < v_lines[j + 1]:
+                        col_idx = j
+                        break
+
+                if col_idx is not None:
+                    cell_pairs.append(((r_top, col_idx), (r_bot, col_idx)))
+                else:
+                    # fallback
+                    pass
+
+            # If we never found a pair, fallback to a single cell approach or skip
+            if not cell_pairs:
+                # fallback: store something that indicates we didn't find 2
+                cell_pairs = [((None, None), (None, None))]
 
             sign_info = {
                 'sign_label': label,
                 'bounding_box': (x1, y1, x2, y2),
-                'grid_position': grid_pos
+                'cell_pairs': cell_pairs
             }
             sign_results.append(sign_info)
 

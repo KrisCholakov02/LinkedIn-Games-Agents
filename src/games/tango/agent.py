@@ -83,8 +83,15 @@ class LinkedInTangoAgent(BaseGameAgent):
 
         print(f"[✓] Recognized board with {rows} rows × {cols} columns.")
         print(f"[✓] Found {len(set(cell_map.values()))} cell clusters and {len(sign_map)} sign(s).")
-        print(f"[✓] Cell map: {cell_map}")
-        print(f"[✓] Sign map: {sign_map}")
+        # Print the cell map in a grid-like format
+        for r in range(rows):
+            row_str = ""
+            for c in range(cols):
+                row_str += f"{cell_map[(r, c)]} "
+            print(row_str)
+        # Print the sign map
+        for sign_item in sign_map:
+            print(sign_item)
 
         # Return the cell map and the sign map instead of an edge map
         return cell_map, sign_map
