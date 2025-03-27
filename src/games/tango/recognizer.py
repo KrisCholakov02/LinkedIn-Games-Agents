@@ -5,17 +5,6 @@ from sklearn.cluster import KMeans
 
 
 def detect_grid_size_from_faded_lines(image, debug=True):
-    """
-    Detects faded grid lines in the Tango puzzle board (horizontal and vertical)
-    and returns their pixel coordinates.
-
-    Args:
-        image (np.ndarray): Input BGR image.
-        debug (bool): Whether to save a debug image showing detected lines.
-
-    Returns:
-        tuple: (horizontal_line_positions, vertical_line_positions)
-    """
     original = image.copy()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
@@ -74,18 +63,6 @@ def detect_grid_size_from_faded_lines(image, debug=True):
 
 
 def crop_cell_inners(image, h_lines, v_lines, margin=10):
-    """
-    Crops inner content of each cell by applying margin on all sides.
-
-    Args:
-        image (np.ndarray): Input BGR image.
-        h_lines (list): Horizontal line positions.
-        v_lines (list): Vertical line positions.
-        margin (int): Padding from all sides (default 10 pixels).
-
-    Returns:
-        list: List of (position, cell_image) tuples.
-    """
     cell_images = []
     os.makedirs("img/debug/cells", exist_ok=True)
 
@@ -106,17 +83,41 @@ def crop_cell_inners(image, h_lines, v_lines, margin=10):
     return cell_images
 
 
+def crop_inner_edges(image, h_lines, v_lines, pad=10, cut=5):
+    edge_images = []
+    os.makedirs("img/debug/edges", exist_ok=True)
+    rows = len(h_lines) - 1
+    cols = len(v_lines) - 1
+
+    for i in range(rows):
+        for j in range(cols):
+            y1, y2 = h_lines[i], h_lines[i + 1]
+            x1, x2 = v_lines[j], v_lines[j + 1]
+
+            # Right edge
+            if j < cols - 1:
+                x_edge = v_lines[j + 1]
+                y_top = y1 + pad
+                y_bot = y2 - pad
+                edge = image[y_top:y_bot, x_edge - 3:x_edge + 3]
+                edge = edge[cut:-cut, :]
+                edge_images.append((((i, j), (i, j + 1)), edge))
+
+            # Bottom edge
+            if i < rows - 1:
+                y_edge = h_lines[i + 1]
+                x_left = x1 + pad
+                x_right = x2 - pad
+                edge = image[y_edge - 3:y_edge + 3, x_left:x_right]
+                edge = edge[:, cut:-cut]
+                edge = cv2.rotate(edge, cv2.ROTATE_90_CLOCKWISE)
+                edge = cv2.flip(edge, 1)  # Flip horizontally
+                edge_images.append((((i, j), (i + 1, j)), edge))
+
+    return edge_images
+
+
 def determine_optimal_k(features, max_k=3):
-    """
-    Automatically choose optimal number of clusters using simplified elbow method.
-
-    Args:
-        features (np.ndarray): Flattened grayscale features.
-        max_k (int): Maximum clusters to test.
-
-    Returns:
-        int: Optimal number of clusters.
-    """
     inertias = []
     for k in range(1, max_k + 1):
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
@@ -131,18 +132,9 @@ def determine_optimal_k(features, max_k=3):
     return 3
 
 
-def classify_cells(cell_images, max_clusters=3):
-    """
-    Clusters the cells into 1–3 groups (e.g., empty, moon, sun).
-
-    Args:
-        cell_images (list): List of (pos, img) tuples.
-
-    Returns:
-        list: Cluster labels per cell.
-    """
+def classify_images(image_tuples, max_clusters):
     features = []
-    for (_, img) in cell_images:
+    for (_, img) in image_tuples:
         resized = cv2.resize(img, (24, 24))
         gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
         gray = cv2.equalizeHist(gray)
@@ -159,26 +151,13 @@ def classify_cells(cell_images, max_clusters=3):
 
 
 def recognize_tango_board(image, debug=True):
-    """
-    Recognizes only the inner cells (Sun, Moon, Empty) of a Tango board.
-
-    Args:
-        image (np.ndarray): BGR screenshot of the puzzle.
-        debug (bool): Whether to save debug output.
-
-    Returns:
-        tuple:
-            - cell_map: {(row, col): cluster_id}
-            - rows: int
-            - cols: int
-    """
     h_lines, v_lines = detect_grid_size_from_faded_lines(image, debug=debug)
     rows = len(h_lines) - 1
     cols = len(v_lines) - 1
 
+    # --- Cells ---
     cell_images = crop_cell_inners(image, h_lines, v_lines, margin=10)
-    cell_labels = classify_cells(cell_images)
-
+    cell_labels = classify_images(cell_images, max_clusters=3)
     cell_map = {pos: label for (pos, _), label in zip(cell_images, cell_labels)}
 
     if debug:
@@ -188,4 +167,17 @@ def recognize_tango_board(image, debug=True):
             r, c = pos
             cv2.imwrite(f"{cluster_dir}/cell_{r}_{c}.png", img)
 
-    return cell_map, rows, cols
+    # --- Edges ---
+    edge_images = crop_inner_edges(image, h_lines, v_lines, pad=10, cut=5)
+    edge_labels = classify_images(edge_images, max_clusters=3)
+    edge_map = {pos: label for (pos, _), label in zip(edge_images, edge_labels)}
+
+    if debug:
+        for (pos, img), label in zip(edge_images, edge_labels):
+            cluster_dir = f"img/debug/edges/cluster_{label}"
+            os.makedirs(cluster_dir, exist_ok=True)
+            r1, c1 = pos[0]
+            r2, c2 = pos[1]
+            cv2.imwrite(f"{cluster_dir}/edge_{r1}_{c1}__{r2}_{c2}.png", img)
+
+    return cell_map, edge_map, rows, cols

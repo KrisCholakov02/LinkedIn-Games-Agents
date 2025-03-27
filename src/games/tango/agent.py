@@ -29,12 +29,12 @@ class LinkedInTangoAgent(BaseGameAgent):
         return image
 
     def recognize(self, image):
-        cell_map, rows, cols = recognize_tango_board(image, debug=True)
+        cell_map, edge_map, rows, cols = recognize_tango_board(image, debug=True)
         self.num_cols = cols
         self.num_rows = rows
         print(f"[✓] Recognized board with {rows} rows × {cols} columns.")
-        print(f"[✓] Found {len(set(cell_map.values()))} cell clusters.")
-        return cell_map
+        print(f"[✓] Found {len(set(cell_map.values()))} cell clusters and {len(set(edge_map.values()))} edge clusters.")
+        return cell_map, edge_map
 
     def solve(self, maze_map):
         # To be implemented: placeholder
