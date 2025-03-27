@@ -1,4 +1,9 @@
 from time import sleep
+
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 from src.core.base_game_agent import BaseGameAgent
 from src.games.tango.solver import solve_tango_puzzle
 from src.games.tango.placer import place_solution as place_tango_solution
@@ -21,11 +26,52 @@ class LinkedInTangoAgent(BaseGameAgent):
         return self._handle_game_state()
 
     def capture_board(self):
+        """
+        1) Finds and clicks the main 'Clear' button (id='aux-controls-clear').
+        2) Waits for the confirm modal; finds the 'Clear' button inside that modal
+           via the <span> text='Clear', and clicks it.
+        3) Takes a screenshot of the board (class='lotka-board'), saves to
+           'img/tango_screenshot.png', then loads and returns the cv2 image.
+        """
+        import time
+        import cv2
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
+        # First Clear Button
+        try:
+            main_clear_button = self.driver.find_element(By.ID, "aux-controls-clear")
+            main_clear_button.click()
+            time.sleep(0.3)
+            print("[i] Clicked the main 'Clear' button before capturing board.")
+        except Exception as e:
+            print(f"[!] Could not find/click main Clear button: {e}")
+
+        # Second Clear Button (Confirm in Modal)
+        try:
+            wait = WebDriverWait(self.driver, 5)
+            confirm_button = wait.until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "//button[contains(@class,'artdeco-modal__confirm-dialog-btn') and .//span[text()='Clear']]"
+                ))
+            )
+            confirm_button.click()
+            time.sleep(0.3)
+            print("[i] Confirmed 'Clear' in the modal before capturing board.")
+        except Exception as e:
+            print(f"[!] Could not find/click confirm dialog's Clear button: {e}")
+
+        # Now do the actual screenshot of the board
         output_path = "img/tango_screenshot.png"
         take_screenshot(self.driver, output_path, board_class="lotka-board")
+
+        # Load with cv2
         image = cv2.imread(output_path)
         if image is None:
             raise RuntimeError(f"Failed to load image from {output_path}")
+
         print("[✓] Captured and loaded Tango board screenshot.")
         return image
 
