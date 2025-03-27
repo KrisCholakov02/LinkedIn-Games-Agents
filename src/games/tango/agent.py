@@ -98,48 +98,69 @@ class LinkedInTangoAgent(BaseGameAgent):
 
     def solve(self, recognized_data):
         """
-        Solve the Tango puzzle using the external solver from solver.py
+        Solve the Tango puzzle, respecting pre-filled icons in cell_map.
         recognized_data => (cell_map, sign_map)
+
+        cell_map => {(r,c): "empty"/"icon1"/"icon2"}
+        sign_map => list of dicts, each with:
+          {
+            'sign_label': 'equals'/'cross',
+            'cell_pairs': [((r1,c1),(r2,c2))]
+          }
         """
         cell_map, sign_map = recognized_data
         rows = self.num_rows
         cols = self.num_cols
 
-        # Build equals_constraints & cross_constraints from sign_map
         equals_constraints = []
         cross_constraints = []
-        # sign_map items might store pairs of adjacent cells that sign covers
-        # e.g. sign_item['cell_pairs'] = [((r1, c1), (r2, c2))]
-        # sign_item['sign_label'] => 'equals' or 'cross'
+
         for item in sign_map:
             label = item['sign_label']
-            if 'cell_pairs' in item:  # or however you store it
-                for pair in item['cell_pairs']:
-                    if label == 'equals':
-                        equals_constraints.append(pair)
-                    elif label == 'cross':
-                        cross_constraints.append(pair)
+            if 'cell_pairs' in item:
+                for (r1, c1), (r2, c2) in item['cell_pairs']:
+                    # skip invalid or out-of-range
+                    if (r1 is None or c1 is None or r2 is None or c2 is None or
+                            r1 < 0 or r1 >= rows or c1 < 0 or c1 >= cols or
+                            r2 < 0 or r2 >= rows or c2 < 0 or c2 >= cols):
+                        continue
 
-        # Each row/column must have the same # of icon1 & icon2 => half icon1, half icon2
-        # For an NxN puzzle with N even => row_quota[r] = N//2
+                    if label == 'equals':
+                        equals_constraints.append(((r1, c1), (r2, c2)))
+                    elif label == 'cross':
+                        cross_constraints.append(((r1, c1), (r2, c2)))
+
+        # For NxN with N even => half icon1, half icon2
         row_quota = [cols // 2] * rows
         col_quota = [rows // 2] * cols
 
-        # Call the puzzle solver
+        # Build initial_grid, filling pre-filled cells from cell_map
+        initial_grid = []
+        for r in range(rows):
+            row_list = []
+            for c in range(cols):
+                val = cell_map.get((r, c), "empty")
+                if val == "icon1" or val == "icon2":
+                    row_list.append(val)  # locked cell
+                else:
+                    row_list.append(None)  # solver can fill
+            initial_grid.append(row_list)
+
         solution = solve_tango_puzzle(rows, cols,
                                       equals_constraints,
                                       cross_constraints,
                                       row_quota,
-                                      col_quota)
+                                      col_quota,
+                                      initial_grid)
 
         if not solution:
-            print("[!] No solution found, which should be unlikely for a valid puzzle.")
+            print("[!] No solution found (puzzle might be invalid).")
+            return []
         else:
             print("[✓] Puzzle solved!")
             for row_sol in solution:
                 print(row_sol)
-        return solution
-
+            return solution
 
     def place_solution(self, solution):
         """
