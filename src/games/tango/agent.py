@@ -43,7 +43,7 @@ class LinkedInTangoAgent(BaseGameAgent):
         try:
             main_clear_button = self.driver.find_element(By.ID, "aux-controls-clear")
             main_clear_button.click()
-            time.sleep(0.3)
+            time.sleep(0.1)
             print("[i] Clicked the main 'Clear' button before capturing board.")
         except Exception as e:
             print(f"[!] Could not find/click main Clear button: {e}")
@@ -58,7 +58,7 @@ class LinkedInTangoAgent(BaseGameAgent):
                 ))
             )
             confirm_button.click()
-            time.sleep(0.3)
+            time.sleep(0.1)
             print("[i] Confirmed 'Clear' in the modal before capturing board.")
         except Exception as e:
             print(f"[!] Could not find/click confirm dialog's Clear button: {e}")

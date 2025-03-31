@@ -18,7 +18,7 @@ def clear_puzzle(driver, debug=False):
     try:
         main_clear_button = driver.find_element(By.ID, "aux-controls-clear")
         main_clear_button.click()
-        time.sleep(0.3)
+        time.sleep(0.1)
         if debug:
             print("[i] Clicked the primary 'Clear' button.")
     except Exception as e:
@@ -35,7 +35,7 @@ def clear_puzzle(driver, debug=False):
             ))
         )
         confirm_clear_button.click()
-        time.sleep(0.3)
+        time.sleep(0.1)
         if debug:
             print("[i] Confirmed Clear in the modal.")
     except Exception as e:
