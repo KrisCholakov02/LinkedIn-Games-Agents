@@ -7,8 +7,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from src.core.base_game_agent import BaseGameAgent
-# from src.games.zip.solver import solve_zip_puzzle
-# from src.games.zip.placer import place_solution as place_zip_solution
+from src.games.zip.solver import solve_zip_puzzle
+from src.games.zip.placer import place_solution as place_zip_solution
 from src.games.zip.recognizer import recognize_zip_board
 from src.utils.screenshot import take_screenshot
 import cv2
@@ -129,7 +129,6 @@ class LinkedInZipAgent(BaseGameAgent):
         connecting lines between the centers of the corresponding cells and saves the debug image.
         """
         cell_map, walls_map, grid_size = recognized_data
-        from src.games.zip.solver import solve_zip_puzzle
         solution = solve_zip_puzzle(cell_map, walls_map, grid_size)
 
         if not solution:
@@ -176,7 +175,7 @@ class LinkedInZipAgent(BaseGameAgent):
 
         print("[i] Placing the puzzle solution on the board...")
         try:
-            # place_zip_solution(self.driver, solution, skip_locked=True, debug=True)
+            place_zip_solution(self.driver, solution, self.num_cols, debug=True)
             print("[✓] Placed the puzzle solution successfully.")
             sleep(1000)
         except RuntimeError as e:
