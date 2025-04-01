@@ -2,11 +2,11 @@ import os
 import numpy as np
 import cv2
 import pytesseract
-
+from glob import glob
 
 def detect_grid_size_from_lines(image, debug=True):
     """
-    Detects number of rows and columns using thick black lines in a grid.
+    Detects the number of rows and columns using greyish grid lines.
 
     Args:
         image (np.ndarray): BGR puzzle image.
@@ -18,8 +18,11 @@ def detect_grid_size_from_lines(image, debug=True):
     original = image.copy()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Threshold to extract dark (black) lines
-    _, binary = cv2.threshold(gray, 40, 255, cv2.THRESH_BINARY_INV)
+    # Use adaptive thresholding to detect greyish grid lines
+    binary = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, blockSize=15, C=5
+    )
 
     # Morphological operations to isolate horizontal and vertical lines
     horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
@@ -44,7 +47,7 @@ def detect_grid_size_from_lines(image, debug=True):
             return grouped
         group = [indices[0]]
         for i in range(1, len(indices)):
-            if indices[i] - indices[i - 1] > min_gap:
+            if indices[i] - indices[i-1] > min_gap:
                 grouped.append(group)
                 group = []
             group.append(indices[i])
@@ -57,9 +60,9 @@ def detect_grid_size_from_lines(image, debug=True):
     if debug:
         debug_img = original.copy()
         for y in horizontal_lines_pos:
-            cv2.line(debug_img, (0, y), (debug_img.shape[1], y), (0, 255, 0), 2)
+            cv2.line(debug_img, (0, y), (debug_img.shape[1], y), (0,255,0), 2)
         for x in vertical_lines_pos:
-            cv2.line(debug_img, (x, 0), (x, debug_img.shape[0]), (255, 0, 0), 2)
+            cv2.line(debug_img, (x, 0), (x, debug_img.shape[0]), (255,0,0), 2)
         os.makedirs("img/debug", exist_ok=True)
         cv2.imwrite("img/debug/zip_grid.png", debug_img)
         print("Saved grid debug image to 'img/debug/zip_grid.png'.")
@@ -70,7 +73,6 @@ def detect_grid_size_from_lines(image, debug=True):
         raise ValueError("Could not detect valid grid lines.")
 
     return num_rows, num_cols
-
 
 def extract_cell_images(image, h_lines, v_lines, margin=10):
     """
@@ -90,8 +92,8 @@ def extract_cell_images(image, h_lines, v_lines, margin=10):
 
     for i in range(len(h_lines) - 1):
         for j in range(len(v_lines) - 1):
-            y1, y2 = h_lines[i], h_lines[i + 1]
-            x1, x2 = v_lines[j], v_lines[j + 1]
+            y1, y2 = h_lines[i], h_lines[i+1]
+            x1, x2 = v_lines[j], v_lines[j+1]
             y1_inner = min(y1 + margin, y2)
             y2_inner = max(y2 - margin, y1_inner + 1)
             x1_inner = min(x1 + margin, x2)
@@ -102,49 +104,52 @@ def extract_cell_images(image, h_lines, v_lines, margin=10):
 
     return cell_images
 
-
-def recognize_digit_ocr(cell_img, debug=False):
+def recognize_digit_ocr(cell_img, r_c, debug=False):
     """
-    Uses pytesseract OCR to recognize digits in the cell image.
+    Uses pytesseract OCR to dynamically recognize digits in the cell image.
+    The function preprocesses the cell image to a strict binary (0,255) image to
+    improve recognition performance.
 
     Args:
         cell_img (np.ndarray): BGR or grayscale cell image.
         debug (bool): If True, prints the OCR result.
 
     Returns:
-        str: The recognized digit (as a string) or "empty" if no digit is found.
+        str: Recognized digit as a string, or "empty" if no digit is found.
     """
-
     # Convert to grayscale if needed.
     if len(cell_img.shape) == 3 and cell_img.shape[2] == 3:
         gray = cv2.cvtColor(cell_img, cv2.COLOR_BGR2GRAY)
     else:
         gray = cell_img.copy()
 
-    # Optionally, apply thresholding to improve OCR performance.
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # Crop 7px from each side to remove border artifacts.
+    gray = gray[7:-7, 7:-7]
 
-    # Use pytesseract with configuration for digits only.
+    # For debugging: save the processed binary image.
+    debug_path = "img/temp/ocr_cell" + f"_{r_c[0]}_{r_c[1]}.png"
+    os.makedirs(os.path.dirname(debug_path), exist_ok=True)
+    cv2.imwrite(debug_path, gray)
+    if debug:
+        print(f"[OCR] Saved binary cell image to '{debug_path}'.")
+
+    # Configure pytesseract to detect a single digit.
     config = "--psm 7 -c tessedit_char_whitelist=0123456789"
-    text = pytesseract.image_to_string(thresh, config=config).strip()
+    text = pytesseract.image_to_string(gray, config=config).strip()
     if debug:
         print(f"[OCR] Recognized text: '{text}'")
-
-    # If no text is found, assume the cell is empty.
     return text if text != "" else "empty"
-
 
 def recognize_zip_board(image, debug=True):
     """
     Full recognition pipeline for the Zip game:
       1. Detects grid lines to determine the number of rows and columns.
       2. Extracts individual cell images.
-      3. Recognizes the content of each cell using OCR (digits) – if a digit is detected, returns that;
-         otherwise, returns "empty".
+      3. Recognizes the content of each cell using OCR (for digits).
 
     Args:
         image (np.ndarray): BGR screenshot of the puzzle board.
-        debug (bool): If True, prints debug information and saves intermediate images.
+        debug (bool): If True, prints debug info and saves intermediate images.
 
     Returns:
         tuple:
@@ -155,7 +160,7 @@ def recognize_zip_board(image, debug=True):
     if debug:
         print(f"Detected grid: {num_rows} rows × {num_cols} cols")
 
-    # Create evenly spaced line positions based on image dimensions.
+    # Generate evenly spaced line positions based on the image dimensions.
     h_lines = list(np.linspace(0, image.shape[0], num_rows + 1, dtype=int))
     v_lines = list(np.linspace(0, image.shape[1], num_cols + 1, dtype=int))
 
@@ -163,9 +168,9 @@ def recognize_zip_board(image, debug=True):
 
     cell_map = {}
     for ((r, c), cell_img) in cell_images:
-        recognized = recognize_digit_ocr(cell_img, debug=debug)
+        recognized = recognize_digit_ocr(cell_img, (r, c), debug=debug)
         cell_map[(r, c)] = recognized
         if debug:
-            print(f"Cell ({r},{c}) recognized as: {recognized}")
+            print(f"Cell ({r}, {c}) recognized as: {recognized}")
 
     return cell_map, (num_rows, num_cols)
