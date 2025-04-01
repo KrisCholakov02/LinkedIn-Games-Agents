@@ -1,5 +1,6 @@
 from time import sleep
 
+import numpy as np
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -57,22 +58,59 @@ class LinkedInZipAgent(BaseGameAgent):
 
     def recognize(self, image):
         """
-        Recognizes the Zip board by detecting the grid and using OCR to read digits.
+        Recognizes the Zip board by detecting the grid, reading digits with OCR,
+        and detecting walls between cells.
 
         Returns:
-            tuple: (cell_map, grid_size)
+            tuple: (cell_map, walls_map, grid_size)
               - cell_map: dict mapping (row, col) to recognized content (digit as string or "empty")
+              - walls_map: dict mapping adjacent cell pairs to a boolean (True if wall present)
               - grid_size: (num_rows, num_cols)
         """
-        cell_map, grid_size = recognize_zip_board(image, debug=True)
+        # Get cell map, walls map, and grid size from the recognition pipeline.
+        cell_map, walls_map, grid_size = recognize_zip_board(image, debug=True)
         self.num_rows, self.num_cols = grid_size
         print(f"[✓] Recognized board with {self.num_rows} rows × {self.num_cols} cols.")
+
+        # Print recognized cell values in a grid format.
         for r in range(self.num_rows):
             row_str = ""
             for c in range(self.num_cols):
                 row_str += f"{cell_map.get((r, c), 'empty')} "
             print(row_str)
-        return cell_map, grid_size
+
+        # --- Visualize Walls ---
+        # Recompute grid lines based on the image dimensions and grid size.
+        h_lines = list(np.linspace(0, image.shape[0], self.num_rows + 1, dtype=int))
+        v_lines = list(np.linspace(0, image.shape[1], self.num_cols + 1, dtype=int))
+
+        # Create a copy of the board image for overlaying wall markers.
+        vis_img = image.copy()
+
+        # Iterate over walls_map: keys are tuples ((r,c), (r2,c2)).
+        # Vertical wall: between cells in the same row, adjacent columns.
+        # Horizontal wall: between cells in the same column, adjacent rows.
+        for ((r, c), (r2, c2)), is_wall in walls_map.items():
+            if is_wall:
+                if r == r2 and c2 == c + 1:
+                    # Vertical wall between cell (r,c) and (r, c+1)
+                    x = v_lines[c2]  # Boundary line between these two cells.
+                    y1 = h_lines[r]
+                    y2 = h_lines[r + 1]
+                    cv2.line(vis_img, (x, y1), (x, y2), (0, 0, 255), 2)
+                elif c == c2 and r2 == r + 1:
+                    # Horizontal wall between cell (r,c) and (r+1, c)
+                    y = h_lines[r2]
+                    x1 = v_lines[c]
+                    x2 = v_lines[c + 1]
+                    cv2.line(vis_img, (x1, y), (x2, y), (0, 0, 255), 2)
+
+        # Save the visualization for debugging.
+        debug_vis_path = "img/debug/zip_walls_visualization.png"
+        cv2.imwrite(debug_vis_path, vis_img)
+        print(f"Saved walls visualization to '{debug_vis_path}'.")
+
+        return cell_map, walls_map, grid_size
 
     def solve(self, recognized_data):
         # TODO: Replace with actual solver logic

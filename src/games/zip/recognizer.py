@@ -4,6 +4,7 @@ import cv2
 import pytesseract
 from glob import glob
 
+
 def detect_grid_size_from_lines(image, debug=True):
     """
     Detects the number of rows and columns using greyish grid lines.
@@ -13,7 +14,7 @@ def detect_grid_size_from_lines(image, debug=True):
         debug (bool): If True, saves an image with drawn grid lines.
 
     Returns:
-        (int, int): (num_rows, num_cols)
+        tuple: (num_rows, num_cols, horizontal_lines_pos, vertical_lines_pos)
     """
     original = image.copy()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -47,7 +48,7 @@ def detect_grid_size_from_lines(image, debug=True):
             return grouped
         group = [indices[0]]
         for i in range(1, len(indices)):
-            if indices[i] - indices[i-1] > min_gap:
+            if indices[i] - indices[i - 1] > min_gap:
                 grouped.append(group)
                 group = []
             group.append(indices[i])
@@ -60,9 +61,9 @@ def detect_grid_size_from_lines(image, debug=True):
     if debug:
         debug_img = original.copy()
         for y in horizontal_lines_pos:
-            cv2.line(debug_img, (0, y), (debug_img.shape[1], y), (0,255,0), 2)
+            cv2.line(debug_img, (0, y), (debug_img.shape[1], y), (0, 255, 0), 2)
         for x in vertical_lines_pos:
-            cv2.line(debug_img, (x, 0), (x, debug_img.shape[0]), (255,0,0), 2)
+            cv2.line(debug_img, (x, 0), (x, debug_img.shape[0]), (255, 0, 0), 2)
         os.makedirs("img/debug", exist_ok=True)
         cv2.imwrite("img/debug/zip_grid.png", debug_img)
         print("Saved grid debug image to 'img/debug/zip_grid.png'.")
@@ -72,7 +73,8 @@ def detect_grid_size_from_lines(image, debug=True):
     if num_rows < 1 or num_cols < 1:
         raise ValueError("Could not detect valid grid lines.")
 
-    return num_rows, num_cols
+    return num_rows, num_cols, horizontal_lines_pos, vertical_lines_pos
+
 
 def extract_cell_images(image, h_lines, v_lines, margin=10):
     """
@@ -89,11 +91,10 @@ def extract_cell_images(image, h_lines, v_lines, margin=10):
     """
     cell_images = []
     os.makedirs("img/debug/cells", exist_ok=True)
-
     for i in range(len(h_lines) - 1):
         for j in range(len(v_lines) - 1):
-            y1, y2 = h_lines[i], h_lines[i+1]
-            x1, x2 = v_lines[j], v_lines[j+1]
+            y1, y2 = h_lines[i], h_lines[i + 1]
+            x1, x2 = v_lines[j], v_lines[j + 1]
             y1_inner = min(y1 + margin, y2)
             y2_inner = max(y2 - margin, y1_inner + 1)
             x1_inner = min(x1 + margin, x2)
@@ -101,44 +102,117 @@ def extract_cell_images(image, h_lines, v_lines, margin=10):
             cell_img = image[y1_inner:y2_inner, x1_inner:x2_inner]
             cell_images.append(((i, j), cell_img))
             cv2.imwrite(f"img/debug/cells/cell_{i}_{j}.png", cell_img)
-
     return cell_images
+
 
 def recognize_digit_ocr(cell_img, r_c, debug=False):
     """
     Uses pytesseract OCR to dynamically recognize digits in the cell image.
-    The function preprocesses the cell image to a strict binary (0,255) image to
-    improve recognition performance.
+    The function converts the cell to a strict binary image (0 or 255) after
+    cropping out border artifacts to improve recognition performance.
 
     Args:
         cell_img (np.ndarray): BGR or grayscale cell image.
-        debug (bool): If True, prints the OCR result.
+        r_c (tuple): (row, col) for naming debug files.
+        debug (bool): If True, prints OCR result.
 
     Returns:
-        str: Recognized digit as a string, or "empty" if no digit is found.
+        str: Recognized digit as a string, or "empty" if not detected.
     """
-    # Convert to grayscale if needed.
     if len(cell_img.shape) == 3 and cell_img.shape[2] == 3:
         gray = cv2.cvtColor(cell_img, cv2.COLOR_BGR2GRAY)
     else:
         gray = cell_img.copy()
 
-    # Crop 7px from each side to remove border artifacts.
-    gray = gray[7:-7, 7:-7]
+    # Crop a few pixels from the border to remove artifacts.
+    if gray.shape[0] > 14 and gray.shape[1] > 14:
+        gray = gray[7:-7, 7:-7]
 
-    # For debugging: save the processed binary image.
-    debug_path = "img/temp/ocr_cell" + f"_{r_c[0]}_{r_c[1]}.png"
+    debug_path = f"img/temp/ocr_cell_{r_c[0]}_{r_c[1]}.png"
     os.makedirs(os.path.dirname(debug_path), exist_ok=True)
     cv2.imwrite(debug_path, gray)
     if debug:
         print(f"[OCR] Saved binary cell image to '{debug_path}'.")
 
-    # Configure pytesseract to detect a single digit.
     config = "--psm 7 -c tessedit_char_whitelist=0123456789"
     text = pytesseract.image_to_string(gray, config=config).strip()
     if debug:
         print(f"[OCR] Recognized text: '{text}'")
     return text if text != "" else "empty"
+
+
+def detect_walls(image, h_lines, v_lines, wall_thickness=3, intensity_threshold=50, margin=2, debug=True):
+    """
+    Detects walls between cells by sampling the inner border regions.
+    A wall is assumed if the average pixel intensity (grayscale) in the border area
+    is below intensity_threshold.
+
+    Args:
+        image (np.ndarray): Original BGR board image.
+        h_lines (list): y-coordinates of detected horizontal grid lines.
+        v_lines (list): x-coordinates of detected vertical grid lines.
+        wall_thickness (int): Half-width (in pixels) of the border region to sample.
+        intensity_threshold (int): Threshold below which the border is considered a wall.
+        margin (int): Margin from cell borders to avoid overlap with cell content.
+        debug (bool): If True, saves debug images for the wall regions.
+
+    Returns:
+        dict: Mapping of adjacent cell pairs to a boolean indicating presence of a wall.
+              For vertical borders, key = ((row, col), (row, col+1)).
+              For horizontal borders, key = ((row, col), (row+1, col)).
+    """
+    walls = {}
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    os.makedirs("img/debug/walls", exist_ok=True)
+
+    num_rows = len(h_lines) - 1
+    num_cols = len(v_lines) - 1
+
+    # Vertical walls: between cells (r, j) and (r, j+1)
+    for r in range(num_rows):
+        for j in range(num_cols - 1):
+            # x position: around v_lines[j+1]
+            x_center = v_lines[j + 1]
+            x1 = max(x_center - wall_thickness, 0)
+            x2 = min(x_center + wall_thickness, gray.shape[1])
+            # y range: from h_lines[r]+margin to h_lines[r+1]-margin
+            y1 = h_lines[r] + margin
+            y2 = h_lines[r + 1] - margin
+            if y2 <= y1:
+                continue
+            border_region = gray[y1:y2, x1:x2]
+            avg_intensity = np.mean(border_region)
+            is_wall = avg_intensity < intensity_threshold
+            walls[((r, j), (r, j + 1))] = is_wall
+            if debug:
+                debug_path = f"img/debug/walls/vertical_r{r}_c{j}_{j + 1}.png"
+                cv2.imwrite(debug_path, border_region)
+                print(
+                    f"[WALL] Vertical wall between (r={r},c={j}) and (r={r},c={j + 1}): avg intensity = {avg_intensity:.1f} -> {'WALL' if is_wall else 'no wall'}")
+
+    # Horizontal walls: between cells (r, c) and (r+1, c)
+    for c in range(num_cols):
+        for r in range(num_rows - 1):
+            # y position: around h_lines[r+1]
+            y_center = h_lines[r + 1]
+            y1 = max(y_center - wall_thickness, 0)
+            y2 = min(y_center + wall_thickness, gray.shape[0])
+            # x range: from v_lines[c]+margin to v_lines[c+1]-margin
+            x1 = v_lines[c] + margin
+            x2 = v_lines[c + 1] - margin
+            if x2 <= x1:
+                continue
+            border_region = gray[y1:y2, x1:x2]
+            avg_intensity = np.mean(border_region)
+            is_wall = avg_intensity < intensity_threshold
+            walls[((r, c), (r + 1, c))] = is_wall
+            if debug:
+                debug_path = f"img/debug/walls/horizontal_r{r}_{r + 1}_c{c}.png"
+                cv2.imwrite(debug_path, border_region)
+                print(
+                    f"[WALL] Horizontal wall between (r={r},c={c}) and (r={r + 1},c={c}): avg intensity = {avg_intensity:.1f} -> {'WALL' if is_wall else 'no wall'}")
+    return walls
+
 
 def recognize_zip_board(image, debug=True):
     """
@@ -146,6 +220,7 @@ def recognize_zip_board(image, debug=True):
       1. Detects grid lines to determine the number of rows and columns.
       2. Extracts individual cell images.
       3. Recognizes the content of each cell using OCR (for digits).
+      4. Detects walls (thick inner borders) between cells.
 
     Args:
         image (np.ndarray): BGR screenshot of the puzzle board.
@@ -154,15 +229,12 @@ def recognize_zip_board(image, debug=True):
     Returns:
         tuple:
           - cell_map: dict mapping (row, col) to recognized content (digit as string or "empty")
+          - walls_map: dict mapping adjacent cell pairs to a boolean (True if wall present)
           - grid_size: (num_rows, num_cols)
     """
-    num_rows, num_cols = detect_grid_size_from_lines(image, debug=debug)
+    num_rows, num_cols, h_lines, v_lines = detect_grid_size_from_lines(image, debug=debug)
     if debug:
         print(f"Detected grid: {num_rows} rows × {num_cols} cols")
-
-    # Generate evenly spaced line positions based on the image dimensions.
-    h_lines = list(np.linspace(0, image.shape[0], num_rows + 1, dtype=int))
-    v_lines = list(np.linspace(0, image.shape[1], num_cols + 1, dtype=int))
 
     cell_images = extract_cell_images(image, h_lines, v_lines, margin=10)
 
@@ -173,4 +245,6 @@ def recognize_zip_board(image, debug=True):
         if debug:
             print(f"Cell ({r}, {c}) recognized as: {recognized}")
 
-    return cell_map, (num_rows, num_cols)
+    walls_map = detect_walls(image, h_lines, v_lines, wall_thickness=3, intensity_threshold=50, margin=2, debug=debug)
+
+    return cell_map, walls_map, (num_rows, num_cols)
