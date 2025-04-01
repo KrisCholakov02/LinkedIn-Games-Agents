@@ -1,3 +1,4 @@
+import os
 from time import sleep
 
 import numpy as np
@@ -113,10 +114,60 @@ class LinkedInZipAgent(BaseGameAgent):
         return cell_map, walls_map, grid_size
 
     def solve(self, recognized_data):
-        # TODO: Replace with actual solver logic
-        # solution = solve_zip_puzzle(recognized_data)
-        # return solution
-        raise NotImplementedError("Solver for Zip is not implemented yet.")
+        """
+        Solves the Zip puzzle by finding a Hamiltonian path that visits every cell exactly once,
+        starting at the cell labeled "1" and ending at the cell with the highest number.
+        The path must obey wall constraints (no movement through a wall) and the numerical order
+        in pre-filled cells must be strictly increasing.
+
+        recognized_data: tuple (cell_map, walls_map, grid_size) where:
+          - cell_map: dict mapping (row, col) -> recognized content ("empty" or a digit as string)
+          - walls_map: dict mapping adjacent cell pairs to a boolean (True if wall exists)
+          - grid_size: (num_rows, num_cols)
+
+        After solving, the method visualizes the solution path on the board screenshot by drawing
+        connecting lines between the centers of the corresponding cells and saves the debug image.
+        """
+        cell_map, walls_map, grid_size = recognized_data
+        from src.games.zip.solver import solve_zip_puzzle
+        solution = solve_zip_puzzle(cell_map, walls_map, grid_size)
+
+        if not solution:
+            print("[!] No solution found, which should be unlikely for a valid puzzle.")
+            return solution
+
+        print("[✓] Puzzle solved!")
+        # Load the board image for visualization.
+        board_img = cv2.imread("img/zip_screenshot.png")
+        if board_img is None:
+            print("[!] Could not load board image for visualization.")
+            return solution
+
+        num_rows, num_cols = grid_size
+        h, w = board_img.shape[:2]
+        # Compute grid boundaries and cell centers.
+        h_lines = np.linspace(0, h, num_rows + 1, dtype=int)
+        v_lines = np.linspace(0, w, num_cols + 1, dtype=int)
+        cell_centers = {}
+        for r in range(num_rows):
+            for c in range(num_cols):
+                center_x = (v_lines[c] + v_lines[c + 1]) // 2
+                center_y = (h_lines[r] + h_lines[r + 1]) // 2
+                cell_centers[(r, c)] = (center_x, center_y)
+
+        # Draw the solution path as red lines connecting cell centers.
+        for i in range(len(solution) - 1):
+            pt1 = cell_centers[solution[i]]
+            pt2 = cell_centers[solution[i + 1]]
+            cv2.line(board_img, pt1, pt2, (0, 0, 255), 2)
+
+        # Save the visualization.
+        vis_path = "img/debug/zip_solution.png"
+        os.makedirs(os.path.dirname(vis_path), exist_ok=True)
+        cv2.imwrite(vis_path, board_img)
+        print(f"Saved solution visualization to '{vis_path}'.")
+
+        return solution
 
     def place_solution(self, solution):
         if not solution:
