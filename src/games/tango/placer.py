@@ -149,13 +149,13 @@ def detect_click_map(driver, rows, cols, refs, debug=False):
 
     # 1) First click => see how well it matches icon1
     test_cell.click()
-    time.sleep(0.2)
+    time.sleep(0.1)
     click1_path = "img/temp/click1_icon.png"
     classify_cell_state(driver, test_cell, refs, filename="click1_icon.png")
 
     # 2) Second click => for debugging
     test_cell.click()
-    time.sleep(0.2)
+    time.sleep(0.1)
     classify_cell_state(driver, test_cell, refs, filename="click2_icon.png")
 
     # load the first screenshot again

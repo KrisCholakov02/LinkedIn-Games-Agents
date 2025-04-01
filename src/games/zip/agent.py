@@ -7,7 +7,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from src.core.base_game_agent import BaseGameAgent
 # from src.games.zip.solver import solve_zip_puzzle
 # from src.games.zip.placer import place_solution as place_zip_solution
-# from src.games.zip.recognizer import recognize_zip_board
+from src.games.zip.recognizer import recognize_zip_board
 from src.utils.screenshot import take_screenshot
 import cv2
 
@@ -48,7 +48,7 @@ class LinkedInZipAgent(BaseGameAgent):
             print(f"[!] Could not find/click confirm dialog's Clear button: {e}")
 
         output_path = "img/zip_screenshot.png"
-        take_screenshot(self.driver, output_path, board_class="lotka-board")
+        take_screenshot(self.driver, output_path, board_class="trail-board")
         image = cv2.imread(output_path)
         if image is None:
             raise RuntimeError(f"Failed to load image from {output_path}")
@@ -56,12 +56,23 @@ class LinkedInZipAgent(BaseGameAgent):
         return image
 
     def recognize(self, image):
-        # TODO: Replace with actual recognition logic
-        # cell_map, special_items, rows, cols = recognize_zip_board(image, debug=True)
-        # self.num_cols = cols
-        # self.num_rows = rows
-        # return cell_map, special_items
-        raise NotImplementedError("Recognition for Zip is not implemented yet.")
+        """
+        Recognizes the Zip board by detecting the grid and using OCR to read digits.
+
+        Returns:
+            tuple: (cell_map, grid_size)
+              - cell_map: dict mapping (row, col) to recognized content (digit as string or "empty")
+              - grid_size: (num_rows, num_cols)
+        """
+        cell_map, grid_size = recognize_zip_board(image, debug=True)
+        self.num_rows, self.num_cols = grid_size
+        print(f"[✓] Recognized board with {self.num_rows} rows × {self.num_cols} cols.")
+        for r in range(self.num_rows):
+            row_str = ""
+            for c in range(self.num_cols):
+                row_str += f"{cell_map.get((r, c), 'empty')} "
+            print(row_str)
+        return cell_map, grid_size
 
     def solve(self, recognized_data):
         # TODO: Replace with actual solver logic
