@@ -5,12 +5,13 @@ from selenium.webdriver.support import expected_conditions as EC
 
 def place_queens_by_dom(driver, queen_positions, num_cols):
     """
-    Places queens on the board by clicking DOM elements using data-cell-idx.
+    Places queens on the board by interacting with DOM elements,
+    using the 'data-cell-idx' attribute to target grid cells.
 
     Args:
-        driver (selenium.webdriver): Active Selenium WebDriver.
-        queen_positions (list of (row, col)): Solved queen positions.
-        num_cols (int): Number of columns in the grid (used to compute cell index).
+        driver (selenium.webdriver): An active Selenium WebDriver instance.
+        queen_positions (list of tuple): List of (row, col) positions for each queen.
+        num_cols (int): Number of columns in the grid (used to calculate cell index).
     """
     wait = WebDriverWait(driver, 10)
 
@@ -21,9 +22,8 @@ def place_queens_by_dom(driver, queen_positions, num_cols):
 
             cell_element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
             cell_element.click()
-            cell_element.click()  # Double-click to place queen
+            cell_element.click()  # Double-click to place a queen
 
-            print(f"Clicked queen at (row={row}, col={col}, idx={cell_idx})")
-
+            print(f"[✓] Placed queen at (row={row}, col={col}, idx={cell_idx})")
         except Exception as e:
-            print(f"Failed to place queen at ({row}, {col}) — {e}")
+            print(f"[✗] Failed to place queen at (row={row}, col={col}) — {e}")

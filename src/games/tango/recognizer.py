@@ -3,8 +3,17 @@ import numpy as np
 import cv2
 from sklearn.cluster import KMeans
 
-
 def detect_grid_size_from_faded_lines(image, debug=True):
+    """
+    Detects the grid size from an image with faded lines.
+
+    Args:
+        image (np.ndarray): Input image.
+        debug (bool): If True, saves debug images.
+
+    Returns:
+        tuple: Lists of y-coordinates of horizontal lines and x-coordinates of vertical lines.
+    """
     original = image.copy()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
@@ -61,8 +70,19 @@ def detect_grid_size_from_faded_lines(image, debug=True):
 
     return horizontal_lines_pos, vertical_lines_pos
 
-
 def crop_cell_inners(image, h_lines, v_lines, margin=10):
+    """
+    Crops the inner parts of cells from the grid.
+
+    Args:
+        image (np.ndarray): Input image.
+        h_lines (list): Y-coordinates of horizontal lines.
+        v_lines (list): X-coordinates of vertical lines.
+        margin (int): Margin to apply when cropping.
+
+    Returns:
+        list: List of tuples containing cell coordinates and cropped cell images.
+    """
     cell_images = []
     os.makedirs("img/debug/cells", exist_ok=True)
 
@@ -82,8 +102,17 @@ def crop_cell_inners(image, h_lines, v_lines, margin=10):
 
     return cell_images
 
-
 def determine_optimal_k(features, max_k=3):
+    """
+    Determines the optimal number of clusters for KMeans.
+
+    Args:
+        features (np.ndarray): Feature array.
+        max_k (int): Maximum number of clusters to consider.
+
+    Returns:
+        int: Optimal number of clusters.
+    """
     inertias = []
     for k in range(1, max_k + 1):
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
@@ -97,8 +126,17 @@ def determine_optimal_k(features, max_k=3):
         return 2
     return 3
 
-
 def classify_images(image_tuples, max_clusters):
+    """
+    Classifies images into clusters using KMeans.
+
+    Args:
+        image_tuples (list): List of tuples containing cell coordinates and images.
+        max_clusters (int): Maximum number of clusters.
+
+    Returns:
+        np.ndarray: Array of cluster labels.
+    """
     features = []
     for (_, img) in image_tuples:
         resized = cv2.resize(img, (24, 24))
@@ -115,8 +153,19 @@ def classify_images(image_tuples, max_clusters):
     labels = kmeans.fit_predict(features_np)
     return labels
 
-
 def multi_scale_template_match(board_gray, tmpl_gray, threshold=0.7, scale_factors=None):
+    """
+    Performs multi-scale template matching.
+
+    Args:
+        board_gray (np.ndarray): Grayscale board image.
+        tmpl_gray (np.ndarray): Grayscale template image.
+        threshold (float): Matching threshold.
+        scale_factors (list): List of scale factors.
+
+    Returns:
+        list: List of bounding boxes for matched regions.
+    """
     if scale_factors is None:
         scale_factors = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
@@ -140,8 +189,17 @@ def multi_scale_template_match(board_gray, tmpl_gray, threshold=0.7, scale_facto
 
     return matches
 
-
 def non_max_suppression(boxes, overlap_thresh=0.3):
+    """
+    Applies non-maximum suppression to bounding boxes.
+
+    Args:
+        boxes (list): List of bounding boxes.
+        overlap_thresh (float): Overlap threshold.
+
+    Returns:
+        list: List of bounding boxes after suppression.
+    """
     if not boxes:
         return []
 
@@ -183,29 +241,20 @@ def non_max_suppression(boxes, overlap_thresh=0.3):
 
     return [boxes[k] for k in keep]
 
-
 def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7, debug=True):
     """
-    Uses multi-scale template matching to find each sign in the board image, then
-    determines which two adjacent cells it sits between. Stores that in
-    sign_info['cell_pairs'] = [((r1,c1), (r2,c2))]
-    rather than just a single grid_position.
+    Detects signs on the grid using template matching.
 
     Args:
         image (np.ndarray): BGR board image.
-        sign_templates (dict): { 'sign_label': cv2_image_of_sign, ... }
-        h_lines (list): Sorted y-coordinates of horizontal grid lines.
-        v_lines (list): Sorted x-coordinates of vertical grid lines.
-        threshold (float): Match threshold for cv2.matchTemplate.
-        debug (bool): If True, saves debug images with bounding boxes.
+        sign_templates (dict): Dictionary of sign templates.
+        h_lines (list): Y-coordinates of horizontal lines.
+        v_lines (list): X-coordinates of vertical lines.
+        threshold (float): Matching threshold.
+        debug (bool): If True, saves debug images.
 
     Returns:
-        sign_map: A list of dictionaries, each containing:
-          {
-            'sign_label': str,
-            'bounding_box': (x1, y1, x2, y2),
-            'cell_pairs': [((r1,c1),(r2,c2))]  # exactly 2 cells
-          }
+        list: List of dictionaries containing sign information.
     """
     if not sign_templates:
         return []
@@ -214,12 +263,9 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
     debug_img = image.copy() if debug else None
     sign_results = []
 
-    # Helper to clamp valid cell indices
     def clamp_idx(val, upper):
         return max(0, min(val, upper - 1))
 
-    # Finds the index in lines[] whose coordinate is nearest to 'val'.
-    # Returns (index, distance)
     def find_nearest_line(val, lines):
         nearest_idx = None
         nearest_dist = float('inf')
@@ -236,9 +282,7 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
             continue
 
         tmpl_gray = cv2.cvtColor(tmpl_bgr, cv2.COLOR_BGR2GRAY)
-        raw_boxes = multi_scale_template_match(board_gray, tmpl_gray,
-                                               threshold=threshold,
-                                               scale_factors=None)
+        raw_boxes = multi_scale_template_match(board_gray, tmpl_gray, threshold=threshold)
 
         final_boxes = non_max_suppression(raw_boxes, overlap_thresh=0.3)
 
@@ -246,31 +290,16 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
             cx = (x1 + x2) // 2
             cy = (y1 + y2) // 2
 
-            # Decide if it's near a vertical or horizontal line
-            # We do a simple check: whichever distance is smaller -> we treat sign as on that line
-            # You can tweak the distance threshold as needed.
             near_v_idx, dist_v = find_nearest_line(cx, v_lines)
             near_h_idx, dist_h = find_nearest_line(cy, h_lines)
 
-            # Suppose we define a threshold of ±6 px to consider "near" a line
-            # If it is nearer to vertical than horizontal, treat it as vertical
-            # else horizontal. If neither is < 6, we skip or treat as single cell?
-
-            # We only handle "one dimension" boundary.
-            # If puzzle can have diagonal or corner signs, adapt further.
             cell_pairs = []
             line_thresh = 6
 
             if dist_v < dist_h and dist_v < line_thresh:
-                # The sign is near a vertical boundary line => between two adjacent columns in the same row
-                # near_v_idx is an index in v_lines
-                # That line is between col = near_v_idx-1 and near_v_idx
                 c_left = clamp_idx(near_v_idx - 1, len(v_lines) - 1)
                 c_right = clamp_idx(near_v_idx, len(v_lines) - 1)
 
-                # For row, we find which horizontal band 'cy' belongs in
-                # row_idx s.t. h_lines[row_idx] <= cy < h_lines[row_idx+1]
-                # We'll do a simple linear search:
                 row_idx = None
                 for i in range(len(h_lines) - 1):
                     if h_lines[i] <= cy < h_lines[i + 1]:
@@ -279,16 +308,11 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
 
                 if row_idx is not None:
                     cell_pairs.append(((row_idx, c_left), (row_idx, c_right)))
-                else:
-                    # fallback: single cell or skip
-                    pass
 
             elif dist_h <= dist_v and dist_h < line_thresh:
-                # The sign is near a horizontal boundary line => between two adjacent rows in the same column
                 r_top = clamp_idx(near_h_idx - 1, len(h_lines) - 1)
                 r_bot = clamp_idx(near_h_idx, len(h_lines) - 1)
 
-                # For column, find where 'cx' belongs
                 col_idx = None
                 for j in range(len(v_lines) - 1):
                     if v_lines[j] <= cx < v_lines[j + 1]:
@@ -297,13 +321,8 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
 
                 if col_idx is not None:
                     cell_pairs.append(((r_top, col_idx), (r_bot, col_idx)))
-                else:
-                    # fallback
-                    pass
 
-            # If we never found a pair, fallback to a single cell approach or skip
             if not cell_pairs:
-                # fallback: store something that indicates we didn't find 2
                 cell_pairs = [((None, None), (None, None))]
 
             sign_info = {
@@ -315,8 +334,7 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
 
             if debug and debug_img is not None:
                 cv2.rectangle(debug_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                cv2.putText(debug_img, label, (x1, y1 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                cv2.putText(debug_img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
     if debug and debug_img is not None:
         os.makedirs("img/debug/signs", exist_ok=True)
@@ -325,26 +343,23 @@ def detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.7,
 
     return sign_results
 
-
 def assign_cluster_names(cell_images, cell_labels):
     """
-    Assign "empty", "icon1", "icon2" to each distinct cluster:
-      1) Compute average brightness for each cluster.
-      2) Sort clusters from brightest to darkest.
-      3) Label the brightest as 'empty', next as 'icon1', next as 'icon2'.
-      4) If fewer than 3 distinct clusters exist, skip unused labels.
-      5) If there's only one cluster, decide if it's "empty" by brightness threshold.
-    Returns a dictionary { cluster_label: cluster_name }.
+    Assigns names to clusters based on average brightness.
+
+    Args:
+        cell_images (list): List of tuples containing cell coordinates and images.
+        cell_labels (np.ndarray): Array of cluster labels.
+
+    Returns:
+        dict: Dictionary mapping cluster labels to names.
     """
-    # Collect images per cluster
     cluster_to_imgs = {}
     for (pos, img), label in zip(cell_images, cell_labels):
         cluster_to_imgs.setdefault(label, []).append(img)
 
-    # Compute average brightness per cluster (in grayscale)
     cluster_brightness = {}
     for label, img_list in cluster_to_imgs.items():
-        # Flatten all images into a single grayscale array to get a general average
         all_pixels = []
         for bgr in img_list:
             gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
@@ -352,31 +367,23 @@ def assign_cluster_names(cell_images, cell_labels):
         avg_brightness = np.mean(all_pixels)
         cluster_brightness[label] = avg_brightness
 
-    # Sort clusters by descending brightness
     sorted_clusters = sorted(cluster_brightness.items(), key=lambda x: x[1], reverse=True)
-    # Example result: [ (cluster_label, brightness), (cluster_label2, brightness2), ... ]
-
-    # Decide how many distinct clusters
     distinct_clusters = len(sorted_clusters)
     name_map = {}
 
     if distinct_clusters == 1:
-        # Only one cluster. Check brightness
         only_label, only_brightness = sorted_clusters[0]
-        if only_brightness > 200:  # threshold; adjust as needed
+        if only_brightness > 200:
             name_map[only_label] = "empty"
         else:
             name_map[only_label] = "icon1"
 
     elif distinct_clusters == 2:
-        # The brightest cluster is empty, second is icon1
         (label0, bright0), (label1, bright1) = sorted_clusters
         name_map[label0] = "empty"
         name_map[label1] = "icon1"
 
     else:
-        # 3 or more clusters
-        # We only care about up to 3 for naming
         (label0, bright0) = sorted_clusters[0]
         (label1, bright1) = sorted_clusters[1]
         (label2, bright2) = sorted_clusters[2]
@@ -384,58 +391,41 @@ def assign_cluster_names(cell_images, cell_labels):
         name_map[label1] = "icon1"
         name_map[label2] = "icon2"
 
-        # If there are more than 3 clusters, label the rest "icon2" (or skip)
         for extra_label, _ in sorted_clusters[3:]:
             name_map[extra_label] = "icon2"
 
     return name_map
 
-
 def recognize_tango_board(image, sign_templates=None, debug=True):
     """
-    Main entry point for detecting the board layout, cell content clusters,
-    naming them "empty"/"icon1"/"icon2", and locating sign symbols using multi-scale template matching.
+    Recognizes the Tango board layout and cell content.
 
     Args:
         image (np.ndarray): BGR input of the entire board.
-        sign_templates (dict or None):
-            A dictionary of named sign images for template matching,
-            e.g. { 'cross': cv2.imread('cross.png'), 'equals': cv2.imread('equals.png'), ... }
-        debug (bool): If True, will write debug images to disk.
+        sign_templates (dict or None): Dictionary of sign templates.
+        debug (bool): If True, saves debug images.
 
     Returns:
-        - cell_map: Dictionary mapping (row, col) -> "empty"/"icon1"/"icon2"
-        - sign_map: List of sign detections (each with sign_label, bounding_box, grid_position)
-        - rows: Number of grid rows
-        - cols: Number of grid cols
+        tuple: Cell map, sign map, number of rows, and number of columns.
     """
-    # Fallback: If user didn't provide sign templates, load them from disk
     if sign_templates is None:
         sign_templates = {
             'cross': cv2.imread("src/games/tango/cross.png"),
             'equals': cv2.imread("src/games/tango/equal.png"),
         }
 
-    # 1) Detect grid lines
     h_lines, v_lines = detect_grid_size_from_faded_lines(image, debug=debug)
     rows = len(h_lines) - 1
     cols = len(v_lines) - 1
 
-    # 2) Crop individual cells
     cell_images = crop_cell_inners(image, h_lines, v_lines, margin=10)
-
-    # 3) Cluster the cell images
     cell_labels = classify_images(cell_images, max_clusters=3)
-
-    # 4) Assign readable names to each cluster
     cluster_name_map = assign_cluster_names(cell_images, cell_labels)
 
-    # Build the final cell map as (row, col) -> "empty"/"icon1"/"icon2"
     cell_map = {}
     for ((r, c), _), label in zip(cell_images, cell_labels):
         cell_map[(r, c)] = cluster_name_map[label]
 
-    # 5) Debug-saving cells by cluster name, if desired
     if debug:
         for (pos, img), cluster_id in zip(cell_images, cell_labels):
             cluster_dir = f"img/debug/cells/{cluster_name_map[cluster_id]}"
@@ -443,12 +433,9 @@ def recognize_tango_board(image, sign_templates=None, debug=True):
             r, c = pos
             cv2.imwrite(f"{cluster_dir}/cell_{r}_{c}.png", img)
 
-    # 6) Detect sign symbols (e.g., crosses/equals)
     sign_map = []
     if sign_templates:
         print("[i] Detecting sign symbols on the board...")
-        sign_map = detect_signs_on_grid(
-            image, sign_templates, h_lines, v_lines, threshold=0.8, debug=debug
-        )
+        sign_map = detect_signs_on_grid(image, sign_templates, h_lines, v_lines, threshold=0.8, debug=debug)
 
     return cell_map, sign_map, rows, cols

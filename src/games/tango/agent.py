@@ -7,19 +7,42 @@ from selenium.webdriver.support import expected_conditions as EC
 from src.core.base_game_agent import BaseGameAgent
 from src.games.tango.solver import solve_tango_puzzle
 from src.games.tango.placer import place_solution as place_tango_solution
-
 from src.games.tango.recognizer import recognize_tango_board
 from src.utils.screenshot import take_screenshot
+
 import cv2
 
 
 class LinkedInTangoAgent(BaseGameAgent):
-    def __init__(self, driver_path, headless=False):
+    """
+    Agent for automating the LinkedIn 'Tango' logic puzzle.
+    Handles login, board clearing, screenshot capture, recognition, solving, and interaction.
+    """
+
+    def __init__(self, driver_path: str, headless: bool = False):
+        """
+        Initializes the Tango agent and launches the browser.
+
+        Args:
+            driver_path (str): Path to the Chrome WebDriver.
+            headless (bool): Whether to run the browser in headless mode.
+        """
         super().__init__(driver_path, headless)
         self.launch_driver()
         self.num_cols = None
+        self.num_rows = None
 
     def navigate_and_prepare(self, username: str, password: str) -> bool:
+        """
+        Logs into LinkedIn and navigates to the Tango game.
+
+        Args:
+            username (str): LinkedIn username.
+            password (str): LinkedIn password.
+
+        Returns:
+            bool: True if puzzle is ready to be solved, False otherwise.
+        """
         self.login(username, password)
         self.navigate_to_game("Tango")
         sleep(1)
@@ -27,48 +50,41 @@ class LinkedInTangoAgent(BaseGameAgent):
 
     def capture_board(self):
         """
-        1) Finds and clicks the main 'Clear' button (id='aux-controls-clear').
-        2) Waits for the confirm modal; finds the 'Clear' button inside that modal
-           via the <span> text='Clear', and clicks it.
-        3) Takes a screenshot of the board (class='lotka-board'), saves to
-           'img/tango_screenshot.png', then loads and returns the cv2 image.
-        """
-        import time
-        import cv2
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
+        Clears the board and captures a screenshot of the Tango puzzle.
 
-        # First Clear Button
+        Returns:
+            image (np.ndarray): The captured puzzle board image.
+
+        Raises:
+            RuntimeError: If the screenshot could not be loaded.
+        """
+        # Click the main "Clear" button
         try:
             main_clear_button = self.driver.find_element(By.ID, "aux-controls-clear")
             main_clear_button.click()
-            time.sleep(0.1)
-            print("[i] Clicked the main 'Clear' button before capturing board.")
+            sleep(0.1)
+            print("[i] Clicked the main 'Clear' button.")
         except Exception as e:
-            print(f"[!] Could not find/click main Clear button: {e}")
+            print(f"[!] Failed to click main Clear button: {e}")
 
-        # Second Clear Button (Confirm in Modal)
+        # Confirm "Clear" in the modal
         try:
             wait = WebDriverWait(self.driver, 5)
-            confirm_button = wait.until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    "//button[contains(@class,'artdeco-modal__confirm-dialog-btn') and .//span[text()='Clear']]"
-                ))
-            )
+            confirm_button = wait.until(EC.element_to_be_clickable((
+                By.XPATH,
+                "//button[contains(@class,'artdeco-modal__confirm-dialog-btn') and .//span[text()='Clear']]"
+            )))
             confirm_button.click()
-            time.sleep(0.1)
-            print("[i] Confirmed 'Clear' in the modal before capturing board.")
+            sleep(0.1)
+            print("[i] Confirmed 'Clear' in the modal.")
         except Exception as e:
-            print(f"[!] Could not find/click confirm dialog's Clear button: {e}")
+            print(f"[!] Failed to confirm Clear in modal: {e}")
 
-        # Now do the actual screenshot of the board
+        # Take screenshot
         output_path = "img/tango_screenshot.png"
         take_screenshot(self.driver, output_path, board_class="lotka-board")
-
-        # Load with cv2
         image = cv2.imread(output_path)
+
         if image is None:
             raise RuntimeError(f"Failed to load image from {output_path}")
 
@@ -76,41 +92,46 @@ class LinkedInTangoAgent(BaseGameAgent):
         return image
 
     def recognize(self, image):
-        # Now returns (cell_map, sign_map, rows, cols)
+        """
+        Recognizes the current state of the board from the screenshot.
+
+        Args:
+            image (np.ndarray): Screenshot of the puzzle board.
+
+        Returns:
+            tuple:
+                - cell_map (dict): {(row, col): "empty"/"icon1"/"icon2"}
+                - sign_map (list): List of constraint objects between cell pairs.
+        """
         cell_map, sign_map, rows, cols = recognize_tango_board(image, debug=True)
-        self.num_cols = cols
         self.num_rows = rows
+        self.num_cols = cols
 
         print(f"[✓] Recognized board with {rows} rows × {cols} columns.")
         print(f"[✓] Found {len(set(cell_map.values()))} cell clusters and {len(sign_map)} sign(s).")
-        # Print the cell map in a grid-like format
-        for r in range(rows):
-            row_str = ""
-            for c in range(cols):
-                row_str += f"{cell_map[(r, c)]} "
-            print(row_str)
-        # Print the sign map
-        for sign_item in sign_map:
-            print(sign_item)
 
-        # Return the cell map and the sign map instead of an edge map
+        # Print the cell map visually
+        for r in range(rows):
+            row_str = " ".join(str(cell_map[(r, c)]) for c in range(cols))
+            print(row_str)
+
+        for sign in sign_map:
+            print(sign)
+
         return cell_map, sign_map
 
     def solve(self, recognized_data):
         """
-        Solve the Tango puzzle, respecting pre-filled icons in cell_map.
-        recognized_data => (cell_map, sign_map)
+        Solves the Tango puzzle based on recognized board state and constraints.
 
-        cell_map => {(r,c): "empty"/"icon1"/"icon2"}
-        sign_map => list of dicts, each with:
-          {
-            'sign_label': 'equals'/'cross',
-            'cell_pairs': [((r1,c1),(r2,c2))]
-          }
+        Args:
+            recognized_data (tuple): (cell_map, sign_map)
+
+        Returns:
+            list: Solved grid (2D list of "icon1"/"icon2") or [] if no solution found.
         """
         cell_map, sign_map = recognized_data
-        rows = self.num_rows
-        cols = self.num_cols
+        rows, cols = self.num_rows, self.num_cols
 
         equals_constraints = []
         cross_constraints = []
@@ -119,53 +140,51 @@ class LinkedInTangoAgent(BaseGameAgent):
             label = item['sign_label']
             if 'cell_pairs' in item:
                 for (r1, c1), (r2, c2) in item['cell_pairs']:
-                    # skip invalid or out-of-range
-                    if (r1 is None or c1 is None or r2 is None or c2 is None or
+                    if (None in [r1, c1, r2, c2] or
                             r1 < 0 or r1 >= rows or c1 < 0 or c1 >= cols or
                             r2 < 0 or r2 >= rows or c2 < 0 or c2 >= cols):
                         continue
-
                     if label == 'equals':
                         equals_constraints.append(((r1, c1), (r2, c2)))
                     elif label == 'cross':
                         cross_constraints.append(((r1, c1), (r2, c2)))
 
-        # For NxN with N even => half icon1, half icon2
         row_quota = [cols // 2] * rows
         col_quota = [rows // 2] * cols
 
-        # Build initial_grid, filling pre-filled cells from cell_map
-        initial_grid = []
-        for r in range(rows):
-            row_list = []
-            for c in range(cols):
-                val = cell_map.get((r, c), "empty")
-                if val == "icon1" or val == "icon2":
-                    row_list.append(val)  # locked cell
-                else:
-                    row_list.append(None)  # solver can fill
-            initial_grid.append(row_list)
+        # Build initial grid
+        initial_grid = [
+            [
+                cell_map.get((r, c)) if cell_map.get((r, c)) in {"icon1", "icon2"} else None
+                for c in range(cols)
+            ]
+            for r in range(rows)
+        ]
 
-        solution = solve_tango_puzzle(rows, cols,
-                                      equals_constraints,
-                                      cross_constraints,
-                                      row_quota,
-                                      col_quota,
-                                      initial_grid)
+        solution = solve_tango_puzzle(
+            rows, cols,
+            equals_constraints,
+            cross_constraints,
+            row_quota,
+            col_quota,
+            initial_grid
+        )
 
         if not solution:
-            print("[!] No solution found (puzzle might be invalid).")
+            print("[!] No solution found (puzzle may be invalid).")
             return []
         else:
-            print("[✓] Puzzle solved!")
-            for row_sol in solution:
-                print(row_sol)
+            print("[✓] Puzzle solved:")
+            for row in solution:
+                print(row)
             return solution
 
     def place_solution(self, solution):
         """
-        Places the puzzle solution on the board by clicking each cell
-        until it shows the correct icon.
+        Places the solved solution onto the board using DOM interaction.
+
+        Args:
+            solution (list): 2D list of "icon1"/"icon2" strings.
         """
         if not solution:
             print("[!] No solution to place.")
@@ -177,9 +196,9 @@ class LinkedInTangoAgent(BaseGameAgent):
                 driver=self.driver,
                 solution_grid=solution,
                 skip_locked=True,
-                debug=True   # set to False for less logging
+                debug=True  # Set to False to reduce console output
             )
             print("[✓] Placed the puzzle solution successfully.")
             sleep(1000)
         except RuntimeError as e:
-            print(f"[✗] Placing solution failed: {e}")
+            print(f"[✗] Failed to place solution: {e}")

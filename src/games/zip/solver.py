@@ -1,85 +1,88 @@
 def solve_zip_puzzle(cell_map, walls_map, grid_size):
     """
-    Solves the Zip puzzle via backtracking.
+    Solves the Zip puzzle using depth-first search (DFS) with backtracking.
 
-    The puzzle is represented by:
-      - cell_map: dict mapping (row, col) -> content, where content is either "empty" or a digit as a string.
-      - walls_map: dict mapping adjacent cell pairs (e.g. ((r,c),(r, c+1)) for vertical, ((r,c),(r+1,c)) for horizontal)
-                   to a boolean (True if a wall exists, disallowing movement).
-      - grid_size: tuple (num_rows, num_cols)
+    Rules:
+        - Each cell must be visited exactly once (Hamiltonian path).
+        - The path must begin at the cell labeled "1" and end at the cell with the highest number.
+        - Movement between adjacent cells is allowed unless blocked by a wall.
+        - If a cell contains a digit, it must be visited in strictly increasing numeric order.
 
-    The goal is to find a Hamiltonian path that visits every cell exactly once, starting at the cell
-    labeled "1" and ending at the cell with the highest number. Moreover, when the path passes through
-    pre-filled (numbered) cells, the digits must appear in strictly increasing order.
+    Args:
+        cell_map (dict): Maps (row, col) to either a digit (str) or "empty".
+        walls_map (dict): Maps ((r1, c1), (r2, c2)) → bool indicating wall presence (True = wall).
+        grid_size (tuple): (num_rows, num_cols)
 
     Returns:
-        list: A list of (row, col) positions representing the valid path, or [] if no solution exists.
+        list[(row, col)]: Ordered list of cell positions representing the valid path, or [] if unsolvable.
     """
     num_rows, num_cols = grid_size
     total_cells = num_rows * num_cols
 
-    # Identify start and end cells from the pre-filled numbers.
+    # Locate starting cell ("1") and ending cell (maximum number)
     start = None
     end = None
     max_num = -1
-    for pos, content in cell_map.items():
-        if content != "empty":
-            try:
-                num = int(content)
-            except ValueError:
-                continue
-            if num == 1:
-                start = pos
-            if num > max_num:
-                max_num = num
-                end = pos
+
+    for pos, value in cell_map.items():
+        if value == "empty":
+            continue
+        try:
+            num = int(value)
+        except ValueError:
+            continue
+        if num == 1:
+            start = pos
+        if num > max_num:
+            max_num = num
+            end = pos
+
     if start is None or end is None:
-        print("Error: Start (cell with 1) or end (cell with highest number) is missing.")
+        print("Error: Missing required start or end cell (with numbers).")
         return []
 
-    # Allowed moves: up, down, left, right.
+    # Legal movements: up, down, left, right
     moves = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
-    def is_move_allowed(cur, nxt):
-        # Check boundaries.
-        r, c = nxt
-        if r < 0 or r >= num_rows or c < 0 or c >= num_cols:
+    def is_move_allowed(current, neighbor):
+        r, c = neighbor
+        if not (0 <= r < num_rows and 0 <= c < num_cols):
             return False
-        # Disallow move if a wall exists between cur and nxt.
-        if (((cur, nxt) in walls_map and walls_map[(cur, nxt)]) or
-            ((nxt, cur) in walls_map and walls_map[(nxt, cur)])):
+        if walls_map.get((current, neighbor), False) or walls_map.get((neighbor, current), False):
             return False
         return True
 
     best_solution = None
 
-    def dfs(cur, path, last_number):
+    def dfs(current, path, last_num):
         nonlocal best_solution
-        # If a complete path is found, check that it ends at the correct cell and last number equals max_num.
+
         if len(path) == total_cells:
-            if cur == end and last_number == max_num:
+            if current == end and last_num == max_num:
                 best_solution = path.copy()
             return
 
         for dr, dc in moves:
-            nxt = (cur[0] + dr, cur[1] + dc)
-            if nxt in path:
+            neighbor = (current[0] + dr, current[1] + dc)
+            if neighbor in path:
                 continue
-            if not is_move_allowed(cur, nxt):
+            if not is_move_allowed(current, neighbor):
                 continue
-            # Enforce number ordering if the next cell is pre-filled.
-            nxt_content = cell_map.get(nxt, "empty")
-            new_last = last_number
-            if nxt_content != "empty":
+
+            content = cell_map.get(neighbor, "empty")
+            updated_last = last_num
+
+            if content != "empty":
                 try:
-                    nxt_num = int(nxt_content)
+                    number = int(content)
                 except ValueError:
                     continue
-                if nxt_num <= last_number:
+                if number <= last_num:
                     continue
-                new_last = nxt_num
-            path.append(nxt)
-            dfs(nxt, path, new_last)
+                updated_last = number
+
+            path.append(neighbor)
+            dfs(neighbor, path, updated_last)
             if best_solution is not None:
                 return
             path.pop()

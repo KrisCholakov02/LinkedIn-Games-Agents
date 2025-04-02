@@ -2,8 +2,6 @@ import os
 import numpy as np
 import cv2
 import pytesseract
-from glob import glob
-
 
 def detect_grid_size_from_lines(image, debug=True):
     """
@@ -19,20 +17,17 @@ def detect_grid_size_from_lines(image, debug=True):
     original = image.copy()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Use adaptive thresholding to detect greyish grid lines
     binary = cv2.adaptiveThreshold(
         gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV, blockSize=15, C=5
     )
 
-    # Morphological operations to isolate horizontal and vertical lines
     horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
     vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
 
     horizontal_lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, horizontal_kernel)
     vertical_lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, vertical_kernel)
 
-    # Compute projection profiles
     horizontal_projection = np.sum(horizontal_lines, axis=1)
     vertical_projection = np.sum(vertical_lines, axis=0)
 
@@ -75,7 +70,6 @@ def detect_grid_size_from_lines(image, debug=True):
 
     return num_rows, num_cols, horizontal_lines_pos, vertical_lines_pos
 
-
 def extract_cell_images(image, h_lines, v_lines, margin=10):
     """
     Divides the board image into individual cell images.
@@ -104,12 +98,9 @@ def extract_cell_images(image, h_lines, v_lines, margin=10):
             cv2.imwrite(f"img/debug/cells/cell_{i}_{j}.png", cell_img)
     return cell_images
 
-
 def recognize_digit_ocr(cell_img, r_c, debug=False):
     """
-    Uses pytesseract OCR to dynamically recognize digits in the cell image.
-    The function converts the cell to a strict binary image (0 or 255) after
-    cropping out border artifacts to improve recognition performance.
+    Recognizes digits in the cell image using OCR.
 
     Args:
         cell_img (np.ndarray): BGR or grayscale cell image.
@@ -124,7 +115,6 @@ def recognize_digit_ocr(cell_img, r_c, debug=False):
     else:
         gray = cell_img.copy()
 
-    # Crop a few pixels from the border to remove artifacts.
     if gray.shape[0] > 14 and gray.shape[1] > 14:
         gray = gray[7:-7, 7:-7]
 
@@ -140,12 +130,9 @@ def recognize_digit_ocr(cell_img, r_c, debug=False):
         print(f"[OCR] Recognized text: '{text}'")
     return text if text != "" else "empty"
 
-
 def detect_walls(image, h_lines, v_lines, wall_thickness=3, intensity_threshold=50, margin=2, debug=True):
     """
     Detects walls between cells by sampling the inner border regions.
-    A wall is assumed if the average pixel intensity (grayscale) in the border area
-    is below intensity_threshold.
 
     Args:
         image (np.ndarray): Original BGR board image.
@@ -158,8 +145,6 @@ def detect_walls(image, h_lines, v_lines, wall_thickness=3, intensity_threshold=
 
     Returns:
         dict: Mapping of adjacent cell pairs to a boolean indicating presence of a wall.
-              For vertical borders, key = ((row, col), (row, col+1)).
-              For horizontal borders, key = ((row, col), (row+1, col)).
     """
     walls = {}
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -168,14 +153,11 @@ def detect_walls(image, h_lines, v_lines, wall_thickness=3, intensity_threshold=
     num_rows = len(h_lines) - 1
     num_cols = len(v_lines) - 1
 
-    # Vertical walls: between cells (r, j) and (r, j+1)
     for r in range(num_rows):
         for j in range(num_cols - 1):
-            # x position: around v_lines[j+1]
             x_center = v_lines[j + 1]
             x1 = max(x_center - wall_thickness, 0)
             x2 = min(x_center + wall_thickness, gray.shape[1])
-            # y range: from h_lines[r]+margin to h_lines[r+1]-margin
             y1 = h_lines[r] + margin
             y2 = h_lines[r + 1] - margin
             if y2 <= y1:
@@ -190,14 +172,11 @@ def detect_walls(image, h_lines, v_lines, wall_thickness=3, intensity_threshold=
                 print(
                     f"[WALL] Vertical wall between (r={r},c={j}) and (r={r},c={j + 1}): avg intensity = {avg_intensity:.1f} -> {'WALL' if is_wall else 'no wall'}")
 
-    # Horizontal walls: between cells (r, c) and (r+1, c)
     for c in range(num_cols):
         for r in range(num_rows - 1):
-            # y position: around h_lines[r+1]
             y_center = h_lines[r + 1]
             y1 = max(y_center - wall_thickness, 0)
             y2 = min(y_center + wall_thickness, gray.shape[0])
-            # x range: from v_lines[c]+margin to v_lines[c+1]-margin
             x1 = v_lines[c] + margin
             x2 = v_lines[c + 1] - margin
             if x2 <= x1:
@@ -213,14 +192,9 @@ def detect_walls(image, h_lines, v_lines, wall_thickness=3, intensity_threshold=
                     f"[WALL] Horizontal wall between (r={r},c={c}) and (r={r + 1},c={c}): avg intensity = {avg_intensity:.1f} -> {'WALL' if is_wall else 'no wall'}")
     return walls
 
-
 def recognize_zip_board(image, debug=True):
     """
-    Full recognition pipeline for the Zip game:
-      1. Detects grid lines to determine the number of rows and columns.
-      2. Extracts individual cell images.
-      3. Recognizes the content of each cell using OCR (for digits).
-      4. Detects walls (thick inner borders) between cells.
+    Full recognition pipeline for the Zip game.
 
     Args:
         image (np.ndarray): BGR screenshot of the puzzle board.

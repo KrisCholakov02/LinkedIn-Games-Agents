@@ -5,21 +5,22 @@ import numpy as np
 import time
 from selenium.webdriver.common.by import By
 
-
 def take_screenshot(driver, output_path: str, board_class) -> None:
     """
-    Captures and saves a screenshot of only the puzzle board using DOM-based coordinates.
+    Captures and saves a screenshot of the puzzle board using DOM-based coordinates.
 
-    Uses `getBoundingClientRect()` to ensure accurate cropping relative to the viewport.
+    Args:
+        driver (WebDriver): Selenium WebDriver instance.
+        output_path (str): Path to save the screenshot.
+        board_class (str): CSS class name of the board element.
     """
-    time.sleep(1)
+    time.sleep(0.3)
 
-    # Scroll the element into view
+    # Scroll the board element into view
     board_element = driver.find_element(By.CLASS_NAME, board_class)
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", board_element)
-    time.sleep(1)  # allow scroll to settle
 
-    # Use getBoundingClientRect to get viewport-relative coordinates
+    # Get viewport-relative coordinates of the board element
     rect = driver.execute_script("""
         const rect = arguments[0].getBoundingClientRect();
         return {
@@ -38,7 +39,7 @@ def take_screenshot(driver, output_path: str, board_class) -> None:
     # Convert and round coordinates to int
     x, y, w, h = map(math.ceil, (rect['x'], rect['y'], rect['width'], rect['height']))
 
-    # Crop using accurate viewport coords
+    # Crop the image using the viewport coordinates
     cropped = full_img[y:y + h, x:x + w]
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

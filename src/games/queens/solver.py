@@ -1,15 +1,28 @@
+from collections import defaultdict
+
+
 def is_safe(pos, queens, rows_used, cols_used):
     """
-    Checks if a queen can be safely placed at pos (row, col).
+    Determines if a queen can be safely placed at the specified position.
+
+    Args:
+        pos (tuple): The (row, col) position to check.
+        queens (list): Current list of placed queen positions.
+        rows_used (set): Set of rows already occupied by queens.
+        cols_used (set): Set of columns already occupied by queens.
+
+    Returns:
+        bool: True if the position is safe, False otherwise.
     """
     r, c = pos
 
     if r in rows_used or c in cols_used:
         return False
 
+    # Check adjacency (including diagonals)
     for qr, qc in queens:
         if abs(qr - r) == 1 and abs(qc - c) <= 1:
-            return False  # Adjacent (including diagonals)
+            return False
 
     return True
 
@@ -18,21 +31,22 @@ def solve_queens(maze_map, num_clusters):
     """
     Solves the LinkedIn Queens puzzle using backtracking.
 
+    Each cluster must contain exactly one queen. Queens must not be in the same
+    row, column, or adjacent to each other (including diagonals).
+
     Args:
-        maze_map (dict): (row, col) → cluster_id
-        num_clusters (int): number of color clusters
+        maze_map (dict): Mapping of (row, col) → cluster_id.
+        num_clusters (int): Number of distinct color clusters.
 
     Returns:
-        list of (row, col): queen positions, or [] if no solution
+        list of tuple: A list of (row, col) queen positions if a solution is found;
+                       otherwise, an empty list.
     """
-    from collections import defaultdict
-
-    # Group cells by cluster
+    # Group all positions by cluster
     cluster_cells = defaultdict(list)
     for pos, cluster_id in maze_map.items():
         cluster_cells[cluster_id].append(pos)
 
-    # Backtracking state
     solution = []
     rows_used = set()
     cols_used = set()

@@ -1,1 +1,1 @@
-DRIVER_PATH = 'chromedriver-mac-arm64/chromedriver'
+DRIVER_PATH = 'chromedriver-mac-arm64/chromedriver'  # Path to the ChromeDriver executable
