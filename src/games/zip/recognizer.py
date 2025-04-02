@@ -115,8 +115,10 @@ def recognize_digit_ocr(cell_img, r_c, debug=False):
     else:
         gray = cell_img.copy()
 
-    if gray.shape[0] > 14 and gray.shape[1] > 14:
-        gray = gray[7:-7, 7:-7]
+    height, width = gray.shape[:2]
+    crop_h = int(height * 0.2)
+    crop_w = int(width * 0.2)
+    gray = gray[crop_h:height - crop_h, crop_w:width - crop_w]
 
     debug_path = f"img/temp/ocr_cell_{r_c[0]}_{r_c[1]}.png"
     os.makedirs(os.path.dirname(debug_path), exist_ok=True)
