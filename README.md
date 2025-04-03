@@ -110,4 +110,9 @@ Replace `<email>` and `<password>` with your LinkedIn credentials.
 
 ---
 
+## 🎥 Demo
+You can watch a demo of the agents in action on YouTube: https://www.youtube.com/watch?v=XvmLhvoARe0
+
+---
+
 Happy Puzzle Solving! 🚀🎉
