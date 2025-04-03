@@ -73,6 +73,29 @@ The agents leverage several state-of-the-art computer vision strategies:
 
 ---
 
+## 🛠️ Setup Instructions
+
+✅ 1. Install Python Dependencies
+
+First, make sure you have Python 3.8 or above installed. Then, install all required packages using:
+
+```pip install -r requirements.txt```
+
+
+🌐 2. Set Up ChromeDriver (for Selenium Automation)
+
+This project uses Selenium WebDriver to interact with LinkedIn Games via Google Chrome.
+You must install a ChromeDriver version that matches your Chrome browser version.
+
+📌 Step-by-Step:
+1.	Open Google Chrome and navigate to `chrome://settings/help` to find your current version.
+2. Go to the official ChromeDriver download page: https://googlechromelabs.github.io/chrome-for-testing/
+3. Download the matching ChromeDriver version:
+   - Choose your platform (Windows/macOS/Linux).
+   - Extract the archive and place the `chromedriver` executable in a known directory.
+
+---
+
 ## 🚀 How to Run
 
 Ensure you have Python 3.8+ installed and run:

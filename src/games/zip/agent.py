@@ -171,6 +171,6 @@ class LinkedInZipAgent(BaseGameAgent):
         try:
             place_zip_solution(self.driver, solution, self.num_cols, debug=True)
             print("[✓] Solution placed successfully.")
-            sleep(1000)
+            sleep(10)
         except RuntimeError as e:
             print(f"[✗] Error while placing solution: {e}")

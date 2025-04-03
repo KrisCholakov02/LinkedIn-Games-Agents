@@ -199,6 +199,6 @@ class LinkedInTangoAgent(BaseGameAgent):
                 debug=True  # Set to False to reduce console output
             )
             print("[✓] Placed the puzzle solution successfully.")
-            sleep(1000)
+            sleep(10)
         except RuntimeError as e:
             print(f"[✗] Failed to place solution: {e}")

@@ -34,7 +34,7 @@ def place_solution(driver, solution_grid, num_cols, debug=False):
             center = (int(loc['x'] + size['width'] / 2), int(loc['y'] + size['height'] / 2))
             print(f"[i] Clicked cell ({row}, {col}) [idx={idx}] at screen center {center}")
 
-        sleep(0.05)
+        sleep(0.01)
 
     if debug:
         print("[✓] Completed input of solution path.")
